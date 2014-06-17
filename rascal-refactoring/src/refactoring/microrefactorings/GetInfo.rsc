@@ -3,6 +3,7 @@ module refactoring::microrefactorings::GetInfo
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import String;
+import IO;
 
 str extractClassName(loc method) 
 	= substring(method.path,0,findLast(method.path,"/"));
@@ -27,3 +28,12 @@ Expression determineLock(Declaration method){
 
 Statement encloseInSynchronized(Declaration method:method(_,_,_,_,impl))
 	= synchronizedStatement(determineLock(method),impl)[@src = method@src];
+	
+Declaration getMethodFromSrc(set[Declaration] asts, loc src){
+	for (/m:method(_,_,_,_,_) <- asts){
+		if(m@src == src){
+			return m;
+		}
+	}
+	throw "These is no method at location <src>!";
+}
