@@ -52,9 +52,23 @@ Declaration getClassFromDecl(set[Declaration] asts, loc decl){
 	throw "These is no class with that declaration <decl>!";
 }
 
-bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to:class(_,_,_,bodyTo), Declaration target:method(_, name, ps, _, _)){
+loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_)){
 	loc newMethodDecl = |java+method:///|;
-	newMethodDecl.path = to@decl.path + substring(target@decl.path,findLast(target@decl.path,"/"));
+	newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
+	//if the method is not static then we need to add one more parameter in the declaration
+	if(!(static() in (m@modifiers ? {}))){
+		if(ps == []){
+			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + replaceAll(substring(from.path,1), "/", ".") +")";
+		}
+		else{
+			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + ","+ replaceAll(substring(from.path,1), "/", ".") +")";
+		}
+	}
+	return newMethodDecl;
+}
+
+bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to:class(_,_,_,bodyTo), Declaration target:method(_, _, ps, _, _)){
+	loc newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target);
 	//check if the destination class contains another method with the same signature
 	for (/m:method(_,_,_,_,_) <- bodyTo){
 		if(m@decl == newMethodDecl){
