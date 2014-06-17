@@ -37,3 +37,17 @@ Declaration getMethodFromSrc(set[Declaration] asts, loc src){
 	}
 	throw "These is no method at location <src>!";
 }
+
+Declaration getClassFromDecl(set[Declaration] asts, loc decl){
+	for (/c:class(_,_,_,_) <- asts){
+		if(c@decl == decl){
+			return c;
+		}
+	}
+	for (/c:class(_) <- asts){
+		if(c@decl == decl){
+			return c;
+		}
+	}
+	throw "These is no class with that declaration <decl>!";
+}
