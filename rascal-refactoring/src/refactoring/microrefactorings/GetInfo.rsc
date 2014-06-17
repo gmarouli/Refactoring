@@ -3,6 +3,7 @@ module refactoring::microrefactorings::GetInfo
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import String;
+import List;
 import IO;
 
 str extractClassName(loc method) 
@@ -52,11 +53,25 @@ Declaration getClassFromDecl(set[Declaration] asts, loc decl){
 	throw "These is no class with that declaration <decl>!";
 }
 
-loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_)){
+loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), staticM, paramM){
 	loc newMethodDecl = |java+method:///|;
-	newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
-	//if the method is not static then we need to add one more parameter in the declaration
-	if(!(static() in (m@modifiers ? {}))){
+	if(staticM){
+		newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
+		return newMethodDecl;
+	}
+	else if(paramM){
+		newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
+		newMethodDecl.path = replaceFirst(newMethodDecl.path,replaceAll(substring(to.path,1), "/", "."),"");
+		newMethodDecl.path = replaceAll(newMethodDecl.path,",,",",");
+		newMethodDecl.path = replaceAll(newMethodDecl.path,",)",")");
+		newMethodDecl.path = replaceAll(newMethodDecl.path,"(,","(");
+		if(size(ps) == 1)
+			newMethodDecl.path = replaceLast(newMethodDecl.path,")",replaceAll(substring(from.path,1), "/", ".")+")");
+		else
+			newMethodDecl.path = replaceLast(newMethodDecl.path,")",","+replaceAll(substring(from.path,1), "/", ".")+")");
+		return newMethodDecl;
+	}
+	else{
 		if(ps == []){
 			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + replaceAll(substring(from.path,1), "/", ".") +")";
 		}
@@ -68,24 +83,13 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_)){
 }
 
 bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to:class(_,_,_,bodyTo), Declaration target:method(_, _, ps, _, _)){
-	loc newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target);
-	//check if the destination class contains another method with the same signature
-	for (/m:method(_,_,_,_,_) <- bodyTo){
-		if(m@decl == newMethodDecl){
-			println("These is already a method with declaration <newMethodDecl> at <m@src>!");
-			return false;
-		}
-	}
-	for (/m:method(_,_,_,_) <- bodyTo){
-		if(m@decl == newMethodDecl){
-			println("These is already an abstract method with declaration <newMethodDecl> at <m@src>!");
-			return false;
-		}
-	}
+	loc newMethodDecl;
+	bool transferable = false;
 	//check if static
 	if(static() in (target@modifiers ? {})){
 		println("The method is static! Move on ;)");
-		return true;
+		transferable = true;
+		newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,true,false);
 	}
 	//if not
 	else{
@@ -99,23 +103,41 @@ bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to
 				case simpleType(exp):{
 					if(exp@decl == to@decl){
 						println("The destination class is a parameter!");
-						return true;
+						transferable = true;
+						newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,false,true);
 					}
 				}
 			}
 		}
 		//or a field
-		for(/f:field(t, _) <- bodyFrom){
-			switch(t){
-				case simpleType(exp):{
-					if(exp@decl == to@decl){
-						println("The destination class is a field!");
-						return true;
+		if(!transferable){
+			for(/f:field(t, _) <- bodyFrom){
+				switch(t){
+					case simpleType(exp):{
+						if(exp@decl == to@decl){
+							println("The destination class is a field!");
+							transferable = true;
+							newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target, false, false);
+						}
 					}
 				}
 			}
 		}
 	}
-	println("The refactoring cannot be applied if the destination is not a field of the source class or a parameter of the method.");
-	return false;
+	//check if the destination class contains another method with the same signature
+	if(transferable){
+		for (/m:method(_,_,_,_,_) <- bodyTo){
+			if(m@decl == newMethodDecl){
+				println("These is already a method with declaration <newMethodDecl> at <m@src>!");
+				return false;
+			}
+		}
+		for (/m:method(_,_,_,_) <- bodyTo){
+			if(m@decl == newMethodDecl){
+				println("These is already an abstract method with declaration <newMethodDecl> at <m@src>!");
+				return false;
+			}
+		}
+	}
+	return true;
 }
