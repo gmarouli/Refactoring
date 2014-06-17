@@ -98,7 +98,7 @@ bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to
 			switch(t){
 				case simpleType(exp):{
 					if(exp@decl == to@decl){
-						println("The destination class is a parameter <p>!");
+						println("The destination class is a parameter!");
 						return true;
 					}
 				}
@@ -109,12 +109,13 @@ bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to
 			switch(t){
 				case simpleType(exp):{
 					if(exp@decl == to@decl){
-						println("The destination class is a field <f>!");
+						println("The destination class is a field!");
 						return true;
 					}
 				}
 			}
 		}
 	}
+	println("The refactoring cannot be applied if the destination is not a field of the source class or a parameter of the method.");
 	return false;
 }
