@@ -6,6 +6,10 @@ import String;
 import List;
 import IO;
 
+anno loc Declaration @ origDecl;
+
+loc newMethodDecl;
+
 str extractClassName(loc method) 
 	= substring(method.path,0,findLast(method.path,"/"));
 	
@@ -54,7 +58,8 @@ Declaration getClassFromDecl(set[Declaration] asts, loc decl){
 }
 
 loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), staticM, paramM){
-	loc newMethodDecl = |java+method:///|;
+	newMethodDecl = |java+method:///|;
+	
 	if(staticM){
 		newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
 		return newMethodDecl;
@@ -82,29 +87,36 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	return newMethodDecl;
 }
 
-bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to:class(_,_,_,bodyTo), Declaration target:method(_, _, ps, _, _)){
-	loc newMethodDecl;
+tuple[bool, Declaration] isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to:class(_,_,_,bodyTo), Declaration target:method(r, n, ps, exc, body)){
 	bool transferable = false;
+	Declaration refactoredMethod;
 	//check if static
 	if(static() in (target@modifiers ? {})){
 		println("The method is static! Move on ;)");
 		transferable = true;
 		newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,true,false);
+		target = desugarSynchronizedMethod(target);
+		refactoredMethod = method(r, n, ps, exc, body)[@modifiers = target@modifiers]
+													  [@src = target@src]
+													  [@decl = newMethodDecl]
+													  [@origDecl = target@decl];
 	}
 	//if not
 	else{
 		if(synchronized() in (target@modifiers ? {})){
 			println("The method is synchronized but not static! Sorry :(");
-			return false;
+			return <false, refactored>;
 		}
 		//check if the destination class is a parameter 
-		for(p:parameter(t, _, _) <- ps){
-			switch(t){
-				case simpleType(exp):{
-					if(exp@decl == to@decl){
-						println("The destination class is a parameter!");
-						transferable = true;
-						newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,false,true);
+		ps = visit(ps){
+				case p:parameter(simpleType(exp),pname,extr):{
+					if(!transferable){
+						if(exp@decl == to@decl){
+							println("The destination class is a parameter!");
+							transferable = true;
+							newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,false,true);
+							insert parameter(simpleType(simpleName(replaceAll(substring(from@decl.path,1), "/", "."))[@src = exp@src][@decl = from@decl][@typ = from@typ]),pname,extr)
+									[@src = p@src][@decl = |java+parameter:///|+newMethodDecl.path+"/"+pname][@typ = from@typ];
 					}
 				}
 			}
@@ -118,6 +130,8 @@ bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to
 							println("The destination class is a field!");
 							transferable = true;
 							newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target, false, false);
+							ps = ps + [parameter(simpleType(simpleName(replaceAll(substring(from@decl.path,1), "/", "."))[@src = s@src][@decl = from@decl][@typ = from@typ]),"refactoring_param",extr)
+									[@src = p@src][@decl = |java+parameter:///|+newMethodDecl.path+"/"+pname][@typ = from@typ]];
 						}
 					}
 				}
@@ -129,15 +143,20 @@ bool isMethodTransferable(Declaration from:class(_,_,_,bodyFrom), Declaration to
 		for (/m:method(_,_,_,_,_) <- bodyTo){
 			if(m@decl == newMethodDecl){
 				println("These is already a method with declaration <newMethodDecl> at <m@src>!");
-				return false;
+				return <false,refactored>;
 			}
 		}
 		for (/m:method(_,_,_,_) <- bodyTo){
 			if(m@decl == newMethodDecl){
 				println("These is already an abstract method with declaration <newMethodDecl> at <m@src>!");
-				return false;
+				return <false,refactored>;
 			}
 		}
 	}
-	return true;
+	refactoredMethod = method(r, n, ps, exc, body)[@modifiers = target@modifiers]
+									  [@src = target@src]
+									  [@decl = newMethodDecl]
+									  [@origDecl = target@decl];
+										//[@typ = target@typ] missing type
+	return <true,refactoredMethod>;
 }
