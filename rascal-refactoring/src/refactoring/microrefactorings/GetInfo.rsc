@@ -96,6 +96,7 @@ tuple[bool, Declaration] isMethodTransferable(Declaration from:class(_,_,_,bodyF
 		transferable = true;
 		newMethodDecl = getNewMethodDeclaration(from@decl, to@decl,target,true,false);
 		target = desugarSynchronizedMethod(target);
+		body = addQualifiedName(body,from@decl, target@decl);
 		refactoredMethod = method(r, n, ps, exc, body)[@modifiers = target@modifiers]
 													  [@src = target@src]
 													  [@decl = newMethodDecl]
@@ -153,10 +154,36 @@ tuple[bool, Declaration] isMethodTransferable(Declaration from:class(_,_,_,bodyF
 			}
 		}
 	}
+	body = addQualifiedName(body,from@decl, target@decl);
 	refactoredMethod = method(r, n, ps, exc, body)[@modifiers = target@modifiers]
 									  [@src = target@src]
 									  [@decl = newMethodDecl]
 									  [@origDecl = target@decl];
 										//[@typ = target@typ] missing type
 	return <true,refactoredMethod>;
+}
+
+
+//Statement accessFieldsThroughParameter(str pname, ){
+//}
+
+bool isFieldOf(Expression f, loc c) = (f@decl.scheme == "java+field" && substring(f@decl.path,0,findLast(f@decl.path,"/")) == c.path);
+
+Statement addQualifiedName(Statement b, loc from, loc targetMethod){
+	Expression qName = simpleName(replaceAll(substring(from.path,1), "/", "."))
+						[@decl=from]
+                        [@typ=class(from,[])];
+                        
+    return top-down-break visit(b){
+    	case m:methodCall(isSuper, name, args):{
+    		if(m@decl != targetMethod)
+	    		insert methodCall(isSuper, qName[@src = m@src], name, args)[@src = m@src][@decl = m@decl][@typ = m@typ];
+    	}
+    	case s:simpleName(name):{
+    		if(isFieldOf(s,from)){
+    			insert qualifiedName(qName[@src = s@src], s)[@src = s@src][@decl = s@decl][@typ = s@typ];
+    		}
+    	}
+    	case q:qualifiedName(_,_) => q
+    }
 }
