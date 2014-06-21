@@ -69,9 +69,9 @@ tuple[bool, int, int] isDeclarationOf(Statement s:declarationStatement(variables
 	}
 }
 
-Statement insertIntoBlock(Statement b, loc src, int starting, int ending){
+Statement insertIntoBlock(Statement b, loc local, loc src, int starting, int ending){
 	contents = [];
-	return visit(b){
+	return top-down-break visit(b){
 		case s:block(stmts):{
 			if(s@src == src){ 
 				updatedContents = for(stmt <- stmts){
@@ -89,7 +89,13 @@ Statement insertIntoBlock(Statement b, loc src, int starting, int ending){
 						append(stmt);
 					}
 					else{
-						contents += [stmt];
+						if(contents == []){
+							<otherDecl, init> = splitDeclarations(stmt, local);
+							append(otherDecl);
+							contents = [init];
+						}
+						else
+							contents += [stmt];
 					}
 				}
 				if(size(updatedContents) == 1)
@@ -104,11 +110,32 @@ Statement insertIntoBlock(Statement b, loc src, int starting, int ending){
 	}
 }
 
+tuple[Statement, Statement] splitDeclarations(Statement s:declarationStatement(variables(t, frags)), loc local){
+	Statement init = Statement::empty();
+	Statement otherDecl = Statement::empty();
+	frags =	for(f <- frags){
+		if(f@decl == local){
+			init = getAssignmentFromDeclaration(f);
+		}
+		else{
+			append(f);
+		}
+	}
+	if(frags != [])
+		otherDecl = declarationStatement(variables(t, frags))[@src = s@src];
+	return <otherDecl, init>;
+}
+
+Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init))
+	= expressionStatement(assignment(simpleName(name)[@decl = v@decl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
+default Expression getAssignmentFromDeclaration(Expression v)
+	= Statement::empty();
+
 Statement extractBlock(Statement b, loc local){
 	<found, blockSrc, starting, ending> = accessLimits(b, local);
 	println("Found in <blockSrc>, [<starting>, <ending>]");
 	if(found)
-		return insertIntoBlock(b, blockSrc, starting, ending);
+		return insertIntoBlock(b, local, blockSrc, starting, ending);
 	else{
 		println("Error: Local variable <local> not found!");
 		return b;
