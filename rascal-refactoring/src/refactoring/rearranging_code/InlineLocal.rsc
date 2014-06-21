@@ -12,111 +12,113 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 	return <top-down-break visit(blockStmt){
 		//possibility to contain the declaration
 		case s:block(stmts):{
-			if((src.offset > s@src.offset) && (src.offset < (s@src.offset + s@src.length))){
-				stmts = for(stmt <- stmts){
-					<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, inControlStatement, nreplaceOn, exp);
-					append(stmt);
-				}
-				nreplaceOn = replaceOn;
-				insert block(stmts)[@src = s@src];
+			stmts = for(stmt <- stmts){
+				//if the variable is not found yet it does not matter if we are in a control flow environment
+				if(!nreplaceOn)
+					inControlStatement = false;
+				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, inControlStatement, nreplaceOn, exp);
+				append(stmt);
 			}
-			else
-				fail;
+			nreplaceOn = replaceOn;
+			insert block(stmts)[@src = s@src];
 		}
 		case s:declarationStatement(v:variables(t,frags)):{
-			if((src.offset > s@src.offset) && (src.offset < (s@src.offset + s@src.length))){
-				Expression target;
-				for(f <- frags){
-					if(f@decl == local){
-						target = f;
-						nreplaceOn = true;
-						exp = getInitFromVariable(f);
-						println("Local variable found!");
-					}
+			frags = for(f <- frags){
+				if(f@decl == local){
+					nreplaceOn = true;
+					exp = getInitFromVariable(f);
+					println("Local variable found!");
 				}
-				if(nreplaceOn){
-					if(size(frags) == 1)
-						insert Statement::empty();
-					else{
-						insert declarationStatement(variables(t,delete(frags,target)))[@src = s@src];
-					}
+				else{
+					<f,exp> = inlineLocal(f, local, inControlStatement, exp);
+					append(f);
 				}
 			}
+			if(frags == [])
+				insert Statement::empty();
 			else{
-				fail;
-			}
-		}
-		//if the flag replace on is not on just return the statement as it is
-		case Statement s:{
-			println("In stmt<s>");
-			if(!nreplaceOn){
-				insert s;
-			}
-			else{
-				fail;
+				insert declarationStatement(variables(t,frags))[@src = s@src];
 			}
 		}
 		case s:expressionStatement(e):{
-			println("<inControlStatement>: In expression stmt <e>");
-			<e, exp> = inlineLocal(e, local, inControlStatement, exp);
-			if(isInfix(e))
-				insert Statement::empty();
+			if(nreplaceOn){
+				<e, exp> = inlineLocal(e, local, inControlStatement, exp);
+				if(isInfix(e))
+					insert Statement::empty();
+				else
+					insert expressionStatement(e)[@src = s@src];
+			}
 			else
-				insert expressionStatement(e)[@src = s@src];
+				fail;
 		}
 		case s:\if(cond, bIf, bElse):{
-			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+			if(nreplaceOn)
+				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
 			<bIf, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			<bElse, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			insert \if(cond, bIf, bElse)[@src = s@src];
 		}
 		case s:\if(cond,b):{
-			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+			if(nreplaceOn)
+				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
 			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
 			insert \if(cond, b)[@src = s@src];
 		}
 		case s:\while(cond, b):{
-			<cond, exp> = inlineLocal(cond, local, true, exp);
+			if(nreplaceOn)
+				<cond, exp> = inlineLocal(cond, local, true, exp);
 			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			insert \while(cond, b)[@src = s@src];
 		}
 		case s:\do(b, cond):{
 			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
-			<cond, exp> = inlineLocal(cond, local, true, exp);
+			if(nreplaceOn)
+				<cond, exp> = inlineLocal(cond, local, true, exp);
 			insert \do(b, cond)[@src = s@src];
 		}
 		case s:\foreach(p, col, b):{
-			<col, exp> = inlineLocal(col, local, true, exp);
+			if(nreplaceOn)
+				<col, exp> = inlineLocal(col, local, true, exp);
 			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			insert \foreach(p, col, b)[@src = s@src];
 		}
 		case s:\for(init, cond, updaters, b):{
-			init = for(i <- init){
-				<i, exp> = inlineLocal(i, local, true, exp);
-				append(i);
+			if(nreplaceOn){
+				init = for(i <- init){
+					<i, exp> = inlineLocal(i, local, true, exp);
+					append(i);
+				}
+				<cond, exp> = inlineLocal(cond, local, true, exp);
 			}
-			<cond, exp> = inlineLocal(cond, local, true, exp);
 			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
-			updaters = for(u <- updaters){
-				<u, exp> = inlineLocal(u, local, true, exp);
-				append(u);
+			if(nreplaceOn){
+				updaters = for(u <- updaters){
+					<u, exp> = inlineLocal(u, local, true, exp);
+					append(u);
+				}
 			}
 			insert \for(init, cond, updaters, b)[@src = s@src];
 		}
 		case s:\for(init, updaters, b):{
-			init = for(i <- init){
-				<i, exp> = inlineLocal(i, local, true, exp);
-				append(i);
+			if(nreplaceOn){
+				init = for(i <- init){
+					<i, exp> = inlineLocal(i, local, true, exp);
+					append(i);
+				}
 			}
 			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
-			updaters = for(u <- updaters){
-				<u, exp> = inlineLocal(u, local, true, exp);
-				append(u);
+			if(nreplaceOn){
+				updaters = for(u <- updaters){
+					<u, exp> = inlineLocal(u, local, true, exp);
+					append(u);
+				}
 			}
 			insert \for(init, cond, updaters, b)[@src = s@src];
 		}
 		case s:\switch(cond, stmts):{
-			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+			if(nreplaceOn){
+				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+			}
 			stmts = for(stmt <- stmts){
 				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, true, nreplaceOn, exp);
 				append(stmt);
@@ -141,8 +143,12 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 			insert \try(b, stmts,fin)[@src = s@src];
 		}
 		case Expression e:{
-			<e, exp> = inlineLocal(e, local, true, exp);
-			insert e;
+			if(nreplaceOn){
+				<e, exp> = inlineLocal(e, local, true, exp);
+				insert e;
+			}
+			else
+				fail;
 		}
 	}, nreplaceOn, exp>;
 }
