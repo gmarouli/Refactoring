@@ -15,6 +15,29 @@ public int index = -1;
 public bool field = false;
 public str fname = "";
 
+set[loc] collectVariables(Expression exp, set[loc] replacementVariables){
+	visit(exp){
+		case e:simpleName(_):{
+			replacementVariables += {e@decl};
+		}
+	}
+	return replacementVariables;
+}
+
+bool isInfix(Expression e:infix(_,_,_,_)) = true;
+default bool isInfix(Expression e) = false;
+
+bool containsFields(set[loc] variables){
+	for(v <- variables){
+		if(v.scheme == "java+field")
+			return true;
+	}
+	return false;
+}
+loc getMethodDeclFromVariable(loc variable) 
+	= |java+method:///| + substring(variable.path,0,findFirst(variable.path,")")+1);
+
+
 str extractClassName(loc method) 
 	= substring(method.path,0,findLast(method.path,"/"));
 	

@@ -1,22 +1,37 @@
 module refactoring::rearranging_code::InlineLocal
 
-import lang::java::jdt::m3::AST;
-import refactoring::microrefactorings::GetInfo;
-import List;
 import IO;
-import String;
+import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
+import refactoring::microrefactorings::GetInfo;
 
-tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, loc src, bool inControlStatement, bool replaceOn, Expression exp){
+set[Declaration] inlineLocal(set[Declaration] asts, loc local){
+	targetedMethodDecl = getMethodDeclFromVariable(local);
+	return visit(asts){
+		case m:method(r,n,ps,exs,b):{
+			if(m@decl == targetedMethodDecl){
+				<b, successful, _, _, vs> = inlineLocal(b, local, false, false, false, Expression::null(), {});
+				if(successful)
+					println("The refactoring InlineLocal of <local> finished successfully!");
+				if(containsFields(vs))
+					println("Warning: this refactoring moved code that contained shared variables (fields). In concurrent execution the value assigned from inlining could be different.");
+				insert method(r,n,ps,exs,b)[@src = m@src][@decl = m@decl][@typ = m@typ];
+			}
+			else
+				fail;
+		}
+	}
+}
+	
+tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockStmt, loc local, bool successful, bool inControlStatement, bool replaceOn, Expression exp, set[loc] replacementVariables){
 	nreplaceOn = replaceOn;
-	return <top-down-break visit(blockStmt){
-		//possibility to contain the declaration
+	blockStmt = top-down-break visit(blockStmt){
 		case s:block(stmts):{
 			stmts = for(stmt <- stmts){
 				//if the variable is not found yet it does not matter if we are in a control flow environment
 				if(!nreplaceOn)
 					inControlStatement = false;
-				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, inControlStatement, nreplaceOn, exp);
+				<stmt, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(stmt, local, successful, inControlStatement, nreplaceOn, exp, replacementVariables);
 				append(stmt);
 			}
 			nreplaceOn = replaceOn;
@@ -26,11 +41,13 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 			frags = for(f <- frags){
 				if(f@decl == local){
 					nreplaceOn = true;
+					successful = true;
 					exp = getInitFromVariable(f);
-					println("Local variable found!");
+					replacementVariables = collectVariables(exp, replacementVariables);
+					println("Local variable found at <f@src>!");
 				}
 				else{
-					<f,exp> = inlineLocal(f, local, inControlStatement, exp);
+					<f, exp, replacementVariables> = inlineLocal(f, local, inControlStatement, exp, replacementVariables);
 					append(f);
 				}
 			}
@@ -42,7 +59,7 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 		}
 		case s:expressionStatement(e):{
 			if(nreplaceOn){
-				<e, exp> = inlineLocal(e, local, inControlStatement, exp);
+				<e, exp, replacementVariables> = inlineLocal(e, local, inControlStatement, exp, replacementVariables);
 				if(isInfix(e))
 					insert Statement::empty();
 				else
@@ -53,47 +70,47 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 		}
 		case s:\if(cond, bIf, bElse):{
 			if(nreplaceOn)
-				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
-			<bIf, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
-			<bElse, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
+			<bIf, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(bIf, local, successful, true, nreplaceOn, exp, replacementVariables);
+			<bElse, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(bIf, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \if(cond, bIf, bElse)[@src = s@src];
 		}
 		case s:\if(cond,b):{
 			if(nreplaceOn)
-				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
-			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, successfull,inControlStatement, exp, replacementVariables);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \if(cond, b)[@src = s@src];
 		}
 		case s:\while(cond, b):{
 			if(nreplaceOn)
-				<cond, exp> = inlineLocal(cond, local, true, exp);
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, true, exp, replacementVariables);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \while(cond, b)[@src = s@src];
 		}
 		case s:\do(b, cond):{
-			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			if(nreplaceOn)
-				<cond, exp> = inlineLocal(cond, local, true, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, true, exp, replacementVariables);
 			insert \do(b, cond)[@src = s@src];
 		}
 		case s:\foreach(p, col, b):{
 			if(nreplaceOn)
-				<col, exp> = inlineLocal(col, local, true, exp);
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+				<col, exp, replacementVariables> = inlineLocal(col, local, true, exp, replacementVariables);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \foreach(p, col, b)[@src = s@src];
 		}
 		case s:\for(init, cond, updaters, b):{
 			if(nreplaceOn){
 				init = for(i <- init){
-					<i, exp> = inlineLocal(i, local, true, exp);
+					<i, exp, replacementVariables> = inlineLocal(i, local, true, exp, replacementVariables);
 					append(i);
 				}
-				<cond, exp> = inlineLocal(cond, local, true, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, true, exp, replacementVariables);
 			}
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			if(nreplaceOn){
 				updaters = for(u <- updaters){
-					<u, exp> = inlineLocal(u, local, true, exp);
+					<u, exp, replacementVariables> = inlineLocal(u, local, true, exp, replacementVariables);
 					append(u);
 				}
 			}
@@ -102,14 +119,14 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 		case s:\for(init, updaters, b):{
 			if(nreplaceOn){
 				init = for(i <- init){
-					<i, exp> = inlineLocal(i, local, true, exp);
+					<i, exp, replacementVariables> = inlineLocal(i, local, true, exp, replacementVariables);
 					append(i);
 				}
 			}
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			if(nreplaceOn){
 				updaters = for(u <- updaters){
-					<u, exp> = inlineLocal(u, local, true, exp);
+					<u, exp, replacementVariables> = inlineLocal(u, local, true, exp, replacementVariables);
 					append(u);
 				}
 			}
@@ -117,50 +134,51 @@ tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, l
 		}
 		case s:\switch(cond, stmts):{
 			if(nreplaceOn){
-				<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
 			}
 			stmts = for(stmt <- stmts){
-				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, true, nreplaceOn, exp);
+				<stmt, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables);
 				append(stmt);
 			}
 			insert \switch(cond, stmts)[@src = s@src];
 		}
 		case s:\try(b, stmts):{
-			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			stmts = for(stmt <- stmts){
-				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, true, nreplaceOn, exp);
+				<stmt, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables);
 				append(stmt);
 			}
 			insert \try(b, stmts)[@src = s@src];
 		}
 		case s:\try(b, stmts,fin):{
-			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
+			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			stmts = for(stmt <- stmts){
-				<stmt, nreplaceOn, exp> = inlineLocal(stmt, local, src, true, nreplaceOn, exp);
+				<stmt, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables);
 				append(stmt);
 			}
-			<fin, nreplaceOn, exp> = inlineLocal(fin, local, src, inControlStatement, nreplaceOn, exp);
+			<fin, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(fin, local, successful, inControlStatement, nreplaceOn, exp, replacementVariables);
 			insert \try(b, stmts,fin)[@src = s@src];
 		}
 		case Expression e:{
 			if(nreplaceOn){
-				<e, exp> = inlineLocal(e, local, true, exp);
+				<e, exp, replacementVariables> = inlineLocal(e, local, true, exp, replacementVariables);
 				insert e;
 			}
 			else
 				fail;
 		}
-	}, nreplaceOn, exp>;
+	}
+	return <blockStmt, successful, nreplaceOn, exp, replacementVariables>;
 }
 
-tuple[Expression, Expression] inlineLocal(Expression b, loc local, bool inControlStatement, Expression exp){
-	return <top-down-break visit(b){
+tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, bool inControlStatement, Expression exp, set[loc] replacementVariables){
+	b = top-down-break visit(b){
 		case e:infix(lhs, operator, rhs, exts):{
 			if((operator == "&&") || (operator == "||")){
-				<lhs, exp> = inlineLocal(lhs, local, inControlStatement, exp);
-				<rhs, exp> = inlineLocal(lhs, local, true, exp);
+				<lhs, exp, replacementVariables> = inlineLocal(lhs, local, inControlStatement, exp, replacementVariables);
+				<rhs, exp, replacementVariables> = inlineLocal(lhs, local, true, exp, replacementVariables);
 				exts = for(ext <- exts){
-					<ext, exp> = inlineLocal(ext, local, true, exp);
+					<ext, exp, replacementVariables> = inlineLocal(ext, local, true, exp, replacementVariables);
 					append(ext);
 				}
 				insert infix(lhs, operator, rhs, exts)[@src = e@src];
@@ -169,15 +187,15 @@ tuple[Expression, Expression] inlineLocal(Expression b, loc local, bool inContro
 				fail;
 		}
 		case e:conditional(cond, ifE, elseE):{
-			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
-			<ifE, exp> = inlineLocal(ifE, local, true, exp);
-			<elseE, exp> = inlineLocal(elseE, local, true, exp);
+			<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
+			<ifE, exp, replacementVariables> = inlineLocal(ifE, local, true, exp, replacementVariables);
+			<elseE, exp, replacementVariables> = inlineLocal(elseE, local, true, exp, replacementVariables);
 			insert conditional(cond, ifE, elseE)[@src = e@src];
 		}
 		case e:postfix(operand, operator):{
 			if(operand@decl == local && ((operator == "++") || (operator == "--"))){
 				if(inControlStatement){
-					throw "Failed refactoring: Assignment to the local variable in control statement.";
+					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
 				}
 				else{
 					exp = infix(exp,substring(operator,1),number("1")[@typ = TypeSymbol::\int()],[]);
@@ -203,12 +221,13 @@ tuple[Expression, Expression] inlineLocal(Expression b, loc local, bool inContro
 			}
 		}
 		case e: assignment(lhs, operator, rhs):{
-			<temp, exp> = inlineLocal(rhs, local, inControlStatement, exp);
+			<temp, exp, replacementVariables> = inlineLocal(rhs, local, inControlStatement, exp, replacementVariables);
 			if(lhs@decl == local){
 				if (inControlStatement){
-					throw "Failed refactoring: Assignment to the local variable in control statement.";
+					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
 				}
 				
+				replacementVariables = collectVariables(temp, replacementVariables);
 				if(operator == "="){
 					exp = temp;
 					insert(temp[@src = e@src]);
@@ -231,19 +250,6 @@ tuple[Expression, Expression] inlineLocal(Expression b, loc local, bool inContro
 				fail;
 			}
 		}
-	}, exp>;
+	}
+	return <b, exp, replacementVariables>;
 }
-
-bool isInfix(Expression e:infix(_,_,_,_)) = true;
-default bool isInfix(Expression e) = false;
-
-
-
-
-
-
-
-
-
-
-
