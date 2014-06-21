@@ -1,6 +1,7 @@
 module refactoring::rearranging_code::InlineLocal
 
 import IO;
+import String;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import refactoring::microrefactorings::GetInfo;
@@ -8,14 +9,14 @@ import refactoring::microrefactorings::GetInfo;
 set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
 	return visit(asts){
-		case m:method(r,n,ps,exs,b):{
+		case m:method(r, n, ps, exs, b):{
 			if(m@decl == targetedMethodDecl){
 				<b, successful, _, _, vs> = inlineLocal(b, local, false, false, false, Expression::null(), {});
 				if(successful)
 					println("The refactoring InlineLocal of <local> finished successfully!");
 				if(containsFields(vs))
 					println("Warning: this refactoring moved code that contained shared variables (fields). In concurrent execution the value assigned from inlining could be different.");
-				insert method(r,n,ps,exs,b)[@src = m@src][@decl = m@decl][@typ = m@typ];
+				insert method(r, n, ps, exs, b)[@src = m@src][@decl = m@decl][@typ = m@typ];
 			}
 			else
 				fail;
@@ -37,7 +38,7 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 			nreplaceOn = replaceOn;
 			insert block(stmts)[@src = s@src];
 		}
-		case s:declarationStatement(v:variables(t,frags)):{
+		case s:declarationStatement(v:variables(t, frags)):{
 			frags = for(f <- frags){
 				if(f@decl == local){
 					nreplaceOn = true;
@@ -54,7 +55,7 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 			if(frags == [])
 				insert Statement::empty();
 			else{
-				insert declarationStatement(variables(t,frags))[@src = s@src];
+				insert declarationStatement(variables(t, frags))[@src = s@src];
 			}
 		}
 		case s:expressionStatement(e):{
@@ -72,10 +73,10 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 			if(nreplaceOn)
 				<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
 			<bIf, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(bIf, local, successful, true, nreplaceOn, exp, replacementVariables);
-			<bElse, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(bIf, local, successful, true, nreplaceOn, exp, replacementVariables);
+			<bElse, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(bElse, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \if(cond, bIf, bElse)[@src = s@src];
 		}
-		case s:\if(cond,b):{
+		case s:\if(cond, b):{
 			if(nreplaceOn)
 				<cond, exp, replacementVariables> = inlineLocal(cond, local, successfull,inControlStatement, exp, replacementVariables);
 			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
@@ -150,14 +151,14 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 			}
 			insert \try(b, stmts)[@src = s@src];
 		}
-		case s:\try(b, stmts,fin):{
+		case s:\try(b, stmts, fin):{
 			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			stmts = for(stmt <- stmts){
 				<stmt, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables);
 				append(stmt);
 			}
 			<fin, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(fin, local, successful, inControlStatement, nreplaceOn, exp, replacementVariables);
-			insert \try(b, stmts,fin)[@src = s@src];
+			insert \try(b, stmts, fin)[@src = s@src];
 		}
 		case Expression e:{
 			if(nreplaceOn){
@@ -198,7 +199,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
 				}
 				else{
-					exp = infix(exp,substring(operator,1),number("1")[@typ = TypeSymbol::\int()],[]);
+					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], []);
 					insert(exp);
 				}
 			}
@@ -206,13 +207,13 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 				fail;
 			}
 		}
-		case e:prefix(operator,operand):{
+		case e:prefix(operator, operand):{
 			if(operand@decl == local && ((operator == "++") || (operator == "--"))){
 				if(inControlStatement){
 					throw "Failed refactoring: Assignment to the local variable in control statement.";
 				}
 				else{
-					exp = infix(exp,substring(operator,1),number("1")[@typ = TypeSymbol::\int()],[]);
+					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], []);
 					insert(exp);
 				}
 			}
@@ -233,11 +234,11 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					insert(temp[@src = e@src]);
 				}
 				if(operator == "+="){
-					exp = infix(exp,"+",temp,[]);
+					exp = infix(exp, "+", temp, []);
 					insert(exp[@src = e@src]);
 				}
 				if(operator == "-="){
-					exp = infix(exp,"-",temp,[]);
+					exp = infix(exp, "-", temp, []);
 					insert(exp[@src = e@src]);
 				}					
 			}
