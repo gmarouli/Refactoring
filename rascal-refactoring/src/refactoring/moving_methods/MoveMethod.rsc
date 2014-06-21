@@ -19,7 +19,14 @@ bool isMethod(method(_,_,_,_)) = true;
 default bool isMethod(e) = false;
 
 Declaration removeMethod(Declaration targetClass:class(name, ext, impl, body), Declaration targetMethod){
-	return class(name, ext, impl, [d | d <- body, isMethod(d), d@decl != targetMethod@decl])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];
+	return class(name, ext, impl, [d | d <- body, isTargetMethod(d, targetMethod@decl)])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];
+}
+
+bool isTargetMethod(Declaration d, loc targetMethod){
+	if(isMethod(d))
+		return d@decl != targetMethod; 
+	else 
+		return true;
 }
 
 set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinationClassDecl){
@@ -40,12 +47,21 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 					insert  addMethod(destinationClass, refactored);
 				}
 			}
-			case m:methodCall(isSuper, name, args) => adaptMethodCall(targetMethod@decl, sourceClass@decl, destinationClass@decl, m)
-			case m:methodCall(isSuper, rec, name, args) => adaptMethodCall(targetMethod@decl, sourceClass@decl, destinationClass@decl, m)
+			case m:methodCall(isSuper, name, args):{
+				if(m@decl == targetMethod@decl) {
+					insert adaptMethodCall(m, sourceClass@decl, destinationClass@decl);
+					}
+				else 
+					fail;
+			}
+			case m:methodCall(isSuper, rec, name, args):{
+				if(m@decl == targetMethod@decl) 
+					insert adaptMethodCall(m, sourceClass@decl, destinationClass@decl);
+				else
+					fail;
+			}
 		});
 	}
+	iprintln(convertedToPublic);
 	return {};
 }
-
-
-

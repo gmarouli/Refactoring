@@ -334,3 +334,6 @@ Expression adaptMethodCall(m:methodCall(isSuper, name, args), loc from, loc to){
 		return methodCall(isSuper, simpleName(fname)[@src = rec@src][@decl = to][@typ = class(to,[])], name, args+[\this()[@src = m@src]]);
 	}
 }
+
+Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();
+Expression getInitFromVariable(Expression v:variable(_,_, init)) = init;
