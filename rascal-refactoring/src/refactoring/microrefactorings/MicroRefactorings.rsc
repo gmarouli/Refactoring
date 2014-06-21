@@ -29,85 +29,92 @@ Declaration sugarSynchronizedMethod(Declaration m:method(r, n, p, exc, impl)){
 	}
 }
 
-tuple[bool, loc, int, int] accessLimits(Statement b, loc local){
-	visit(b){
-		case s:block(stmts):{
-			<found, st, end> = points(stmts, local);
-			if(found)
-				return <true, s@src, st, end>;
-		}
-	}
-	return <false, |empty:///|, -1, -1>;
-}
-
-tuple[bool, int, int] points(list[Statement] stmts, loc local){
-	found = false;
-	starting = -1;
-	ending = -1;
-	for(stmt <- stmts){
-		if(!found){
-			<found, starting, ending> = isDeclarationOf(stmt, local);
-		}
-		else{
-			visit(stmt){				
-				case e:simpleName(_):{
-					if(e@decl == local){
-						ending = e@src.offset + e@src.length;
-					}
-				}
-			}
-		}
-	}
-	return <found, starting, ending>;
-}
-
-tuple[bool, int, int] isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc local){
+bool isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc local){
 	for(f <- frags){
 		if(f@decl == local){
-			return <true, f@src.offset, f@src.offset + f@src.length>;
+			return true;
+		}
+	}
+}
+default bool isDeclarationOf(Statement s, loc local)
+	= false;
+
+Statement extractBlock(Statement b, loc local){
+	contents = [];
+	unknown = [];
+	loc bSrc = findBlockContainingLocal(b, local);
+	accessed = false;
+	return top-down-break visit(b){
+		case s:block(stmts):{
+			if(s@src == bSrc){
+				stmts = for(stmt <- stmts){
+					if(isDeclarationOf(stmt, local)){
+						<otherDecl, init> = splitDeclarations(stmt, local);
+						if(otherDecl != Statement::empty())
+							append(otherDecl);
+						bSrc = s@src;
+						bSrc.offset = 0;
+						if(init != Statement::empty()){
+							contents = [init];
+							bSrc.offset = init@src.offset;
+							bSrc.begin.line = init@src.begin.line;
+							bSrc.begin.column = init@src.begin.column;
+							accessed = true;
+						}
+				  	}
+					else if(!accessed){
+					  	append(stmt);
+					}
+					else{
+						if(containsLocal(stmt, local)){
+							contents += unknown + [stmt];
+							if(bSrc.offset <= 0){
+								bSrc.offset = stmt@src.offset;
+								bSrc.begin.line = stmt@src.begin.line;
+								bSrc.begin.column = stmt@src.begin.column;
+							}
+							bSrc.length = stmt@src.offset + stmt@src.length - bSrc.offset;
+							bSrc.end.line = stmt@src.end.line;
+							bSrc.end.column = stmt@src.end.column;
+						}
+						else
+							unknown += [stmt];
+					}
+				}
+				accessed = false;
+				if(contents != [] && (stmts != [] || unknown != [])){
+					insert block(stmts + [block(contents)[@src = bSrc]] + unknown)[@src = s@src];
+				} 
+				else
+					insert s;
+			}
+			else
+				fail;
 		}
 	}
 }
 
-Statement insertIntoBlock(Statement b, loc local, loc src, int starting, int ending){
-	contents = [];
-	return top-down-break visit(b){
-		case s:block(stmts):{
-			if(s@src == src){ 
-				updatedContents = for(stmt <- stmts){
-					if((stmt@src.offset + stmt@src.length) < starting)
-						append(stmt);
-					else if(stmt@src.offset > ending){
-						if(contents != []){
-							bSrc = s@src;
-							bSrc.offset = starting;
-							bSrc.length = ending - starting;
-							
-							append(block(contents)[@src = bSrc]);
-							contents = [];
-						}
-						append(stmt);
-					}
-					else{
-						if(contents == []){
-							<otherDecl, init> = splitDeclarations(stmt, local);
-							append(otherDecl);
-							contents = [init];
-						}
-						else
-							contents += [stmt];
-					}
-				}
-				if(size(updatedContents) == 1)
-					insert b;
-				else
-					insert block(updatedContents)[@src = s@src];
-			}
-			else{
-				fail;
+bool containsLocal(Statement stmt, loc local){
+	visit(stmt){				
+		case e:simpleName(_):{
+			if(e@decl == local){
+				return true;
 			}
 		}
 	}
+	return false;
+}
+
+loc findBlockContainingLocal(Statement b, loc local){
+	visit(b){
+		case s:block(stmts):{
+			for(stmt <- stmts){
+				if(isDeclarationOf(stmt, local))
+					return s@src;
+			}
+		}
+	}
+	throw "Error: Local variable <local> was not found!";
 }
 
 tuple[Statement, Statement] splitDeclarations(Statement s:declarationStatement(variables(t, frags)), loc local){
@@ -130,17 +137,6 @@ Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init))
 	= expressionStatement(assignment(simpleName(name)[@decl = v@decl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
 default Expression getAssignmentFromDeclaration(Expression v)
 	= Statement::empty();
-
-Statement extractBlock(Statement b, loc local){
-	<found, blockSrc, starting, ending> = accessLimits(b, local);
-	println("Found in <blockSrc>, [<starting>, <ending>]");
-	if(found)
-		return insertIntoBlock(b, local, blockSrc, starting, ending);
-	else{
-		println("Error: Local variable <local> not found!");
-		return b;
-	}
-}
 
 Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, name, args)){
 	return m;
