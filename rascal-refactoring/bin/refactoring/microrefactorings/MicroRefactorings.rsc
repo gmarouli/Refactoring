@@ -26,3 +26,11 @@ Declaration sugarSynchronizedMethod(Declaration m:method(r, n, p, exc, impl)){
 		}	
 	}
 }
+
+Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, name, args)){
+	return m;
+}
+
+Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, rcv, name, args)){
+	return m;
+}
