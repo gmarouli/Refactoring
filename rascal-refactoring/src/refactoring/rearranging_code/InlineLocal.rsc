@@ -7,9 +7,9 @@ import IO;
 import String;
 import lang::java::m3::TypeSymbol;
 
-tuple[Statement, bool, Expression] inlineLocal(Statement b, loc local, loc src, bool inControlStatement, bool replaceOn, Expression exp){
+tuple[Statement, bool, Expression] inlineLocal(Statement blockStmt, loc local, loc src, bool inControlStatement, bool replaceOn, Expression exp){
 	nreplaceOn = replaceOn;
-	return <top-down-break visit(b){
+	return <top-down-break visit(blockStmt){
 		//possibility to contain the declaration
 		case s:block(stmts):{
 			if((src.offset > s@src.offset) && (src.offset < (s@src.offset + s@src.length))){
@@ -56,12 +56,6 @@ tuple[Statement, bool, Expression] inlineLocal(Statement b, loc local, loc src, 
 				fail;
 			}
 		}
-		case s:\if(cond,b):{
-			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
-			println("Call from iff");
-			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
-			insert \if(cond, b)[@src = s@src];
-		}
 		case s:expressionStatement(e):{
 			println("<inControlStatement>: In expression stmt <e>");
 			<e, exp> = inlineLocal(e, local, inControlStatement, exp);
@@ -70,11 +64,16 @@ tuple[Statement, bool, Expression] inlineLocal(Statement b, loc local, loc src, 
 			else
 				insert expressionStatement(e)[@src = s@src];
 		}
-		case s:\if(cond,bIf, bElse):{
+		case s:\if(cond, bIf, bElse):{
 			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
 			<bIf, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			<bElse, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
 			insert \if(cond, bIf, bElse)[@src = s@src];
+		}
+		case s:\if(cond,b):{
+			<cond, exp> = inlineLocal(cond, local, inControlStatement, exp);
+			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
+			insert \if(cond, b)[@src = s@src];
 		}
 		case s:\while(cond, b):{
 			<cond, exp> = inlineLocal(cond, local, true, exp);
@@ -82,12 +81,7 @@ tuple[Statement, bool, Expression] inlineLocal(Statement b, loc local, loc src, 
 			insert \while(cond, b)[@src = s@src];
 		}
 		case s:\do(b, cond):{
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
-			<cond, exp> = inlineLocal(cond, local, true, exp);
-			insert \do(b, cond)[@src = s@src];
-		}
-		case s:\do(b, cond):{
-			<b, nreplaceOn, exp> = inlineLocal(bIf, local, src, true, nreplaceOn, exp);
+			<b, nreplaceOn, exp> = inlineLocal(b, local, src, true, nreplaceOn, exp);
 			<cond, exp> = inlineLocal(cond, local, true, exp);
 			insert \do(b, cond)[@src = s@src];
 		}
