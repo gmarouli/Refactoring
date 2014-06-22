@@ -39,59 +39,67 @@ bool isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc 
 default bool isDeclarationOf(Statement s, loc local)
 	= false;
 
-Statement extractBlock(Statement b, loc local){
-	contents = [];
-	unknown = [];
+Statement addInASynchronizedBlock(Statement b, loc local, Expression l){
 	loc bSrc = findBlockContainingLocal(b, local);
-	accessed = false;
 	return top-down-break visit(b){
 		case s:block(stmts):{
 			if(s@src == bSrc){
-				stmts = for(stmt <- stmts){
-					if(isDeclarationOf(stmt, local)){
-						<otherDecl, init> = splitDeclarations(stmt, local);
-						if(otherDecl != Statement::empty())
-							append(otherDecl);
-						bSrc = s@src;
-						bSrc.offset = 0;
-						if(init != Statement::empty()){
-							contents = [init];
-							bSrc.offset = init@src.offset;
-							bSrc.begin.line = init@src.begin.line;
-							bSrc.begin.column = init@src.begin.column;
-							accessed = true;
-						}
-				  	}
-					else if(!accessed){
-					  	append(stmt);
-					}
-					else{
-						if(containsLocal(stmt, local)){
-							contents += unknown + [stmt];
-							if(bSrc.offset <= 0){
-								bSrc.offset = stmt@src.offset;
-								bSrc.begin.line = stmt@src.begin.line;
-								bSrc.begin.column = stmt@src.begin.column;
-							}
-							bSrc.length = stmt@src.offset + stmt@src.length - bSrc.offset;
-							bSrc.end.line = stmt@src.end.line;
-							bSrc.end.column = stmt@src.end.column;
-						}
-						else
-							unknown += [stmt];
-					}
+				<stmts1, newBlock, stmts2> = extractBlock(s, local);
+				newBlock = synchronizedStatement(l, newBlock)[@src = newBlock@src];
+				if(stmts1 != [] || stmts2 != []){
+					insert block(stmts1 + [newBlock] + stmts2)[@src = bSrc];
 				}
-				accessed = false;
-				if(contents != [] && (stmts != [] || unknown != [])){
-					insert block(stmts + [block(contents)[@src = bSrc]] + unknown)[@src = s@src];
-				} 
-				else
-					insert s;
+				else{
+					insert newBlock[@src = bSrc];
+				}
 			}
 			else
 				fail;
 		}
 	}
+}
+
+tuple[list[Statement], Statement, list[Statement]] extractBlock(Statement s:block(stmts), loc local){
+	contents = [];
+	unknown = [];
+	accessed = false;
+	loc bSrc = s@src;
+	stmts = for(stmt <- stmts){
+		if(isDeclarationOf(stmt, local)){
+			<otherDecl, init> = splitDeclarations(stmt, local);
+			if(otherDecl != Statement::empty())
+				append(otherDecl);
+			bSrc = s@src;
+			bSrc.offset = 0;
+			if(init != Statement::empty()){
+				contents = [init];
+				bSrc.offset = init@src.offset;
+				bSrc.begin.line = init@src.begin.line;
+				bSrc.begin.column = init@src.begin.column;
+				accessed = true;
+			}
+	  	}
+		else if(!accessed){
+		  	append(stmt);
+		}
+		else{
+			if(containsLocal(stmt, local)){
+				contents += unknown + [stmt];
+				unknown = [];
+				if(bSrc.offset <= 0){
+					bSrc.offset = stmt@src.offset;
+					bSrc.begin.line = stmt@src.begin.line;
+					bSrc.begin.column = stmt@src.begin.column;
+				}
+				bSrc.length = stmt@src.offset + stmt@src.length - bSrc.offset;
+				bSrc.end.line = stmt@src.end.line;
+				bSrc.end.column = stmt@src.end.column;
+			}
+			else
+				unknown += [stmt];
+		}
+	}
+	return <stmts,block(contents)[@src = bSrc],unknown>;
 }
 
 bool containsLocal(Statement stmt, loc local){
