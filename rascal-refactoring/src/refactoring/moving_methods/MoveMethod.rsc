@@ -40,20 +40,43 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	Declaration destinationClass = getClassFromDecl(asts, destinationClassDecl);
 	
 	methodConfig = getMovedMethodConfiguration(sourceClass, destinationClass, targetMethod);
-	asts = moveMethod(asts, methodConfig, sourceClass@decl, destinationClass@decl, targetMethod@decl);
-	return asts;
+	
+	targetMethod = adaptMethod(methodConfig, targetMethod);
+	
+	return visit(asts){
+		case m:method(_, _, _, _, body):{
+			if(m@decl == methodDecl){
+				insert adaptMethod(methodConfig, m);
+			}
+		}
+	}
 }
 
-//set[Declaration] moveMethod(set[Declaration] asts, MethodCase config:\static(decl, rec), loc from, loc to, Declaration method){
-//	visit(asts){
-//		case c:class(_, _, _, b):{
-//			if(c@decl == 
-//		}
-//	}
-//}
+Declaration adaptMethod(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
+	body = adaptMethodCalls(s, m@decl, body);
+	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
+}
+
+Statement adaptMethodCalls(MethodCase s:\static(decl, receiver), loc oldDecl, Statement body){
+	return visit(body){
+		case m:methodCall(isSuper, name, args):{
+			if(m@decl == oldDecl){
+				insert methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+			}
+			else
+				fail;
+		}
+		case m:methodCall(isSuper, rec, name, args):{
+			if(m@decl == oldDecl){
+				insert methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+			}
+			else
+				fail;
+		}
+	}
+}
 
 MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), Declaration to, Declaration m:method(r, n, ps, exs, b)){
-	
 	//find the configuration if the method is static
 	if(static() in (m@modifiers ? {})){
 		println("The method is static! Move on ;)");
