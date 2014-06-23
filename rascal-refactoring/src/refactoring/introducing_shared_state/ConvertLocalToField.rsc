@@ -10,11 +10,8 @@ import refactoring::microrefactorings::MicroRefactorings;
 Declaration newFieldDeclaration;
 
 set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
-	targetedMethodDecl = getMethodDeclFromVariable(local);
-	targetedClassDecl = getClassDeclFromMethod(targetedMethodDecl);
-	fieldName = extractVariableNameFromDecl(local);
-	newFieldDecl = createNewFieldDeclaration(targetedClassDecl, fieldName);
-	lockDecl = createNewFieldDeclaration(targetedClassDecl, "generated_lock_for_"+fieldName);
+	<targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl> = findDeclarations(local);
+	
 	return top-down-break visit(asts){
 		case c:class(name, exts, impls ,body):{
 			if(c@decl == targetedClassDecl){
@@ -54,3 +51,12 @@ Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc loc
 
 default Declaration convertLocalToField(Declaration d, loc local, loc targetedClassDecl, loc targetedMethodDecl, loc newfieldPath, loc lockDecl)
 	= d;
+	
+private tuple[loc, loc, loc, loc] findDeclarations(loc local){
+	loc targetedMethodDecl = getMethodDeclFromVariable(local);
+	loc targetedClassDecl = getClassDeclFromMethod(targetedMethodDecl);
+	loc fieldName = extractVariableNameFromDecl(local);
+	loc newFieldDecl = createNewFieldDeclaration(targetedClassDecl, fieldName);
+	loc lockDecl = createNewFieldDeclaration(targetedClassDecl, "generated_lock_for_"+fieldName);
+	return <targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl>;
+}
