@@ -76,6 +76,24 @@ Statement adaptMethodCalls(MethodCase s:\static(decl, receiver), loc oldDecl, St
 	}
 }
 
+Statement adaptMethodCalls(MethodCase s:inParameters(loc decl, int index), loc oldDecl, Statement body){
+	return visit(body){
+		case m:methodCall(isSuper, rec, name, args):{
+			if(m@decl == oldDecl){
+				if(rec := Expression::this())
+					fail;
+				if((index+1) < size(args))
+					newArgs = args[0..index]+[rec]+args[index+1..];
+				else
+					newArgs = args[0..index]+[rec];
+				insert methodCall(isSuper, args[index], name, newArgs)[@decl = decl][@typ = m@typ][@src = m@src];
+			}
+			else
+				fail;
+		}
+	}
+}
+
 MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), Declaration to, Declaration m:method(r, n, ps, exs, b)){
 	//find the configuration if the method is static
 	if(static() in (m@modifiers ? {})){

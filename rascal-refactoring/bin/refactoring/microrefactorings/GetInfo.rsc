@@ -94,14 +94,12 @@ Declaration getClassFromDecl(set[Declaration] asts, loc decl){
 }
 
 loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), staticM, paramM){
-	newMethodDecl = |java+method:///|;
+	newMethodDecl = |java+method:///| + to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
 	
 	if(staticM){
-		newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
 		return newMethodDecl;
 	}
 	else if(paramM){
-		newMethodDecl.path = to.path + substring(m@decl.path,findLast(m@decl.path,"/"));
 		newMethodDecl.path = replaceFirst(newMethodDecl.path,replaceAll(substring(to.path,1), "/", "."),"");
 		newMethodDecl.path = replaceAll(newMethodDecl.path,",,",",");
 		newMethodDecl.path = replaceAll(newMethodDecl.path,",)",")");
@@ -114,7 +112,7 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	}
 	else{
 		if(ps == []){
-			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + replaceAll(substring(from.path,1), "/", ".") +")";
+			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + ","+ replaceAll(substring(from.path,1), "/", ".") +")";
 		}
 		else{
 			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + ","+ replaceAll(substring(from.path,1), "/", ".") +")";
@@ -122,9 +120,6 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	}
 	return newMethodDecl;
 }
-
-//Statement accessFieldsThroughParameter(str pname, ){
-//}
 
 bool isFieldOf(Expression f, loc c) = (f@decl.scheme == "java+field" && substring(f@decl.path,0,findLast(f@decl.path,"/")) == c.path);
 

@@ -121,9 +121,6 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	return newMethodDecl;
 }
 
-//Statement accessFieldsThroughParameter(str pname, ){
-//}
-
 bool isFieldOf(Expression f, loc c) = (f@decl.scheme == "java+field" && substring(f@decl.path,0,findLast(f@decl.path,"/")) == c.path);
 
 Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();

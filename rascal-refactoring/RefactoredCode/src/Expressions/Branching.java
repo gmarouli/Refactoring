@@ -1,19 +1,16 @@
 package Expressions;
 public class Branching extends Object {
-	private Object generated_lock_for_i = new Object();
-	private int  i;
-	int  c;
-	void add() 
+	static int  c;
+	ExpressionGen g;
+	void add(Expressions.Branching l) 
 		{
 			if(true)
 			{
-				synchronized(generated_lock_for_i)
-					{
-						i = c + 5;
-						i = 7;
-						System.out.name(i);
-					}
+				int  i = c + 5;
+				i = 7;
+				System.out.println(i);
 				c++;
+				Expressions.ExpressionGen.add(l);
 			}
 			if(false)
 			{

@@ -156,6 +156,11 @@ void prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
 	prettyPrint(body, ident + "\t");
 }
 
+void prettyPrint(Declaration p:parameter(t, name, ext)){
+	prettyPrint(t);
+	code += " "+name;
+}
+
 default void prettyPrint(Declaration d, str ident){
 	println(d);
 }
@@ -226,7 +231,7 @@ void prettyPrint(Expression e:assignment(lhs,operator, rhs)){
 
 void prettyPrint(Expression m:methodCall(_, rec, name, ps)){
 	prettyPrint(rec);
-	code += ".name(";
+	code += "."+name+"(";
 	if(ps != []){
 		for(p <- ps){
 			prettyPrint(p);
@@ -260,6 +265,18 @@ void prettyPrint(Expression e:newObject(t,ps)){
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ",")) + ")";
+	}
+	code += ")";
+}
+
+void prettyPrint(Expression m:methodCall(_, name, ps)){
+	code += name+"(";
+	if(ps != []){
+		for(p <- ps){
+			prettyPrint(p);
+			code += ", ";
+		}
+		code = substring(code, 0, findLast(code, ","));
 	}
 	code += ")";
 }
