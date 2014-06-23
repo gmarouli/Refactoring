@@ -1,7 +1,7 @@
 package Expressions;
- class Branching extends Object {
-	Object generated_lock_for_i = new Object();
-	int  i;
+public class Branching extends Object {
+	private Object generated_lock_for_i = new Object();
+	private int  i;
 	int  c;
 	void add() 
 		{

@@ -54,7 +54,11 @@ void prettyPrint(Declaration i:\import(name), str ident){
 }
 
 void prettyPrint(Declaration c:\class(name, exts, impls, body), str ident){
-	code += ident +" class " + name;
+	code += ident;
+	for(m <- (c@modifiers ? [])){
+		prettyPrint(m);
+	}
+	code += "class " + name;
 	if(exts != []){
 		code += " extends ";
 		for(e <- exts){
@@ -78,6 +82,9 @@ void prettyPrint(Declaration c:\class(name, exts, impls, body), str ident){
 
 void prettyPrint(Declaration f:field(t, frags), str ident){
 	code += ident;
+	for(m <- (f@modifiers ? [])){
+		prettyPrint(m);
+	}
 	prettyPrint(t);
 	code += " ";
 	for(fr <- frags){
@@ -99,6 +106,9 @@ void prettyPrint(Declaration f:variables(t, frags), str ident){
 
 void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
 	code += ident;
+	for(m <- (m@modifiers ? [])){
+		prettyPrint(m);
+	}
 	prettyPrint(t);
 	code += name +"(";
 	if(ps != []){
@@ -121,6 +131,9 @@ void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
 
 void prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
 	code += ident;
+	for(m <- (m@modifiers ? [])){
+		prettyPrint(m);
+	}
 	prettyPrint(t);
 	code += name +"(";
 	if(ps != []){
@@ -230,6 +243,9 @@ void prettyPrint(Expression q:qualifiedName(qName,name)){
 	prettyPrint(name);
 }
 
+void prettyPrint(Statement s:empty()){
+}
+
 default void prettyPrint(Statement s, str ident){
 	println(s);
 }
@@ -286,4 +302,28 @@ void prettyPrint(Statement s:synchronizedStatement(l, body), ident){
 	prettyPrint(l);
 	code += ")\n";
 	prettyPrint(body, ident + "\t");
+}
+
+void prettyPrint(Modifier m:\private()){
+	code += "private ";	
+}
+
+void prettyPrint(Modifier m:\synchronized()){
+	code += "synchronized ";	
+}
+
+void prettyPrint(Modifier m:\public()){
+	code += "public ";	
+}
+
+void prettyPrint(Modifier m:\static()){
+	code += "static ";	
+}
+
+void prettyPrint(Modifier m:\volatile()){
+	code += "volatile ";	
+}
+
+default void prettyPrint(Modifier m){
+	println(m);
 }

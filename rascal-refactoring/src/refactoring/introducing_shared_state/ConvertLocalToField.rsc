@@ -18,7 +18,7 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 				body = for(b <- body){
 					append(convertLocalToField(b, local, targetedMethodDecl, newFieldDecl, lockDecl));
 				}
-				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable(extractVariableNameFromDecl(lockDecl), 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[]))])]
+				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable(extractVariableNameFromDecl(lockDecl), 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[]))])[@modifiers = [Modifier::\private()]]]
 					 + [newFieldDeclaration]
 				     + body;
 				insert class(name, exts, impls ,body)[@modifiers=c@modifiers][@src = c@src][@decl=c@decl][@typ=c@typ];

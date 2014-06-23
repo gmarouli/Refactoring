@@ -1,4 +1,4 @@
 package Expressions;
- class ExpressionGen {
+public class ExpressionGen {
 
 }
