@@ -27,6 +27,11 @@ set[loc] collectVariables(Expression exp, set[loc] replacementVariables){
 bool isInfix(Expression e:infix(_,_,_,_)) = true;
 default bool isInfix(Expression e) = false;
 
+bool isLocalAssignment(Expression e:assignment(lhs,_,_), loc local)
+	= lhs@decl == local;
+default bool isLocalAssignment(Expression e, loc local)
+	= false;
+
 bool containsFields(set[loc] variables){
 	for(v <- variables){
 		if(v.scheme == "java+field")

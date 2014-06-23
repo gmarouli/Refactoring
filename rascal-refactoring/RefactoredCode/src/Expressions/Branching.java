@@ -5,12 +5,7 @@ package Expressions;
 		{
 			if(true)
 			{
-				synchronized(generated_lock_for_i)
-					{
-						i = c + 5;
-						c--;
-						System.out.name(i);
-					}
+				System.out.name(7);
 				c++;
 			}
 			if(false)
@@ -18,7 +13,5 @@ package Expressions;
 				int  i = 8;
 			}
 		}
-	Object generated_lock_for_i = new Object();
-	int  i;
 
 }

@@ -60,11 +60,11 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 		}
 		case s:expressionStatement(e):{
 			if(nreplaceOn){
-				<e, exp, replacementVariables> = inlineLocal(e, local, inControlStatement, exp, replacementVariables);
-				if(isInfix(e))
+				<temp, exp, replacementVariables> = inlineLocal(e, local, inControlStatement, exp, replacementVariables);
+				if(isLocalAssignment(e, local))
 					insert Statement::empty();
 				else
-					insert expressionStatement(e)[@src = s@src];
+					insert expressionStatement(temp)[@src = s@src];
 			}
 			else
 				fail;
@@ -182,7 +182,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					<ext, exp, replacementVariables> = inlineLocal(ext, local, true, exp, replacementVariables);
 					append(ext);
 				}
-				insert infix(lhs, operator, rhs, exts)[@src = e@src];
+				insert infix(lhs, operator, rhs, exts)[@src = e@src][@typ = e@typ];
 			}
 			else
 				fail;
@@ -191,7 +191,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 			<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
 			<ifE, exp, replacementVariables> = inlineLocal(ifE, local, true, exp, replacementVariables);
 			<elseE, exp, replacementVariables> = inlineLocal(elseE, local, true, exp, replacementVariables);
-			insert conditional(cond, ifE, elseE)[@src = e@src];
+			insert conditional(cond, ifE, elseE)[@src = e@src][@typ = e@typ];
 		}
 		case e:postfix(operand, operator):{
 			if(operand@decl == local && ((operator == "++") || (operator == "--"))){
@@ -199,7 +199,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
 				}
 				else{
-					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], []);
+					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ];
 					insert(exp);
 				}
 			}
@@ -213,7 +213,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					throw "Failed refactoring: Assignment to the local variable in control statement.";
 				}
 				else{
-					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], []);
+					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ];
 					insert(exp);
 				}
 			}
@@ -234,11 +234,11 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 					insert(temp[@src = e@src]);
 				}
 				if(operator == "+="){
-					exp = infix(exp, "+", temp, []);
+					exp = infix(exp, "+", temp, [])[@typ = e@typ];
 					insert(exp[@src = e@src]);
 				}
 				if(operator == "-="){
-					exp = infix(exp, "-", temp, []);
+					exp = infix(exp, "-", temp, [])[@typ = e@typ];
 					insert(exp[@src = e@src]);
 				}					
 			}
