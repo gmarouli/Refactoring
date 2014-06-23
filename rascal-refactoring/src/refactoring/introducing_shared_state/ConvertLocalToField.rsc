@@ -39,17 +39,17 @@ Declaration convertLocalToField(Declaration f:field(t,frags), loc local, loc tar
 	return f;
 }
 
-Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc local, loc targetedMethodDecl, loc newfieldPath, loc lockDecl){
+Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc local, loc targetedMethodDecl, loc newFieldDecl, loc lockDecl){
 	if(m@decl == targetedMethodDecl){
 		locking = simpleName(extractVariableNameFromDecl(lockDecl))[@decl = lockDecl][@typ = object()];
-		<mb, newFieldDeclaration> = addInASynchronizedBlock(mb, local, locking);
+		<mb, newFieldDeclaration> = encloseInASynchronizedBlock(mb, local, newFieldDecl, locking);
 		return method(r, n, ps, exs, mb)[@src = m@src][@decl = m@decl][@typ = m@typ][@modifiers = m@modifiers];
 	}
 	else
 		return m;
 }
 
-default Declaration convertLocalToField(Declaration d, loc local, loc targetedMethodDecl, loc newfieldPath, loc lockDecl)
+default Declaration convertLocalToField(Declaration d, loc local, loc targetedMethodDecl, loc newfieldDecl, loc lockDecl)
 	= d;
 	
 private tuple[loc, loc, loc, loc] findDeclarations(loc local){

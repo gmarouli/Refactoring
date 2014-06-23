@@ -39,14 +39,14 @@ bool isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc 
 default bool isDeclarationOf(Statement s, loc local)
 	= false;
 
-tuple[Statement, Declaration] addInASynchronizedBlock(Statement b, loc local, Expression l){
+tuple[Statement, Declaration] encloseInASynchronizedBlock(Statement b, loc local, loc fieldDecl, Expression l){
 	loc bSrc = findBlockContainingLocal(b, local);
 	Declaration removed;
 	b = top-down-break visit(b){
 		case s:block(stmts):{
 			if(s@src == bSrc){
-				<stmts1, newBlock, stmts2, removed> = extractBlock(s, local);
-				newBlock = synchronizedStatement(l, newBlock)[@src = newBlock@src];
+				<stmts1, newBlock, stmts2, removed> = extractBlock(s, local, fieldDecl);
+				newBlock = synchronizedStatement(l[@src = newBlock@src], newBlock)[@src = newBlock@src];
 				if(stmts1 != [] || stmts2 != []){
 					insert block(stmts1 + [newBlock] + stmts2)[@src = bSrc];
 				}
@@ -61,7 +61,7 @@ tuple[Statement, Declaration] addInASynchronizedBlock(Statement b, loc local, Ex
 	return <b,removed>;
 }
 
-tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Statement s:block(stmts), loc local){
+tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Statement s:block(stmts), loc local, loc fieldDecl){
 	list[Statement] contents = [];
 	list[Statement] unknown = [];
 	bool accessed = false;
@@ -69,7 +69,7 @@ tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Sta
 	Declaration removed;
 	stmts = for(stmt <- stmts){
 		if(isDeclarationOf(stmt, local)){
-			<otherDecl, init, removed> = splitDeclarations(stmt, local);
+			<otherDecl, init, removed> = splitDeclarations(stmt, local, fieldDecl);
 			if(otherDecl != Statement::empty())
 				append(otherDecl);
 			bSrc = s@src;
@@ -86,7 +86,8 @@ tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Sta
 		  	append(stmt);
 		}
 		else{
-			if(containsLocal(stmt, local)){
+			<stmt, containsLocal> = convertLocalDeclToFieldDecl(stmt, local, fieldDecl); 
+			if(containsLocal){
 				contents += unknown + [stmt];
 				unknown = [];
 				if(bSrc.offset <= 0){
@@ -105,15 +106,19 @@ tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Sta
 	return <stmts,block(contents)[@src = bSrc],unknown, removed>;
 }
 
-bool containsLocal(Statement stmt, loc local){
-	visit(stmt){				
+tuple[Statement, bool] convertLocalDeclToFieldDecl(Statement stmt, loc local, loc fieldDecl){
+	bool found = false;
+	stmt = visit(stmt){				
 		case e:simpleName(_):{
 			if(e@decl == local){
-				return true;
+				found = true;
+				insert e[@decl = fieldDecl];
 			}
+			else
+				fail;
 		}
 	}
-	return false;
+	return <stmt,found>;
 }
 
 loc findBlockContainingLocal(Statement b, loc local){
@@ -128,14 +133,14 @@ loc findBlockContainingLocal(Statement b, loc local){
 	throw "Error: Local variable <local> was not found!";
 }
 
-tuple[Statement, Statement, Declaration] splitDeclarations(Statement s:declarationStatement(variables(t, frags)), loc local){
+tuple[Statement, Statement, Declaration] splitDeclarations(Statement s:declarationStatement(variables(t, frags)), loc local, loc fieldDecl){
 	Statement init = Statement::empty();
 	Statement otherDecl = Statement::empty();
 	Declaration removed;
 	frags =	for(f <- frags){
 		if(f@decl == local){
-			init = getAssignmentFromDeclaration(f);
-			removed = createVariableDeclaration(t,f);
+			init = getAssignmentFromDeclaration(f, fieldDecl);
+			removed = createVariableDeclaration(t,f, fieldDecl);
 		}
 		else{
 			append(f);
@@ -146,15 +151,15 @@ tuple[Statement, Statement, Declaration] splitDeclarations(Statement s:declarati
 	return <otherDecl, init, removed>;
 }
 
-Declaration createVariableDeclaration(Type t, Expression v:variable(name, d, _))
-	= Declaration::field(t,[variable(name,d)])[@modifiers = [\private()]];
+Declaration createVariableDeclaration(Type t, Expression v:variable(name, d, _), loc fieldDecl)
+	= Declaration::field(t,[variable(name,d)[@decl = fieldDecl][@typ = v@typ][@src = v@src]])[@modifiers = [\private()]];
 	
-Declaration createVariableDeclaration(Type t, Expression v:variable(name, d))
-	= Declaration::field(t,[v])[@modifiers = [\private()]];
+Declaration createVariableDeclaration(Type t, Expression v:variable(name, d), loc fieldDecl)
+	= Declaration::field(t,[v[@decl = fieldDecl]])[@modifiers = [\private()]];
 
-Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init))
-	= expressionStatement(assignment(simpleName(name)[@decl = v@decl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
-default Expression getAssignmentFromDeclaration(Expression v)
+Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init), loc fieldDecl)
+	= expressionStatement(assignment(simpleName(name)[@decl = fieldDecl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
+default Expression getAssignmentFromDeclaration(Expression v, loc fieldDecl)
 	= Statement::empty();
 
 Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, name, args)){
