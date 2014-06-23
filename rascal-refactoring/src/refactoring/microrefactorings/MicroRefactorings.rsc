@@ -62,9 +62,9 @@ tuple[Statement, Declaration] addInASynchronizedBlock(Statement b, loc local, Ex
 }
 
 tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Statement s:block(stmts), loc local){
-	contents = [];
-	unknown = [];
-	accessed = false;
+	list[Statement] contents = [];
+	list[Statement] unknown = [];
+	bool accessed = false;
 	loc bSrc = s@src;
 	Declaration removed;
 	stmts = for(stmt <- stmts){

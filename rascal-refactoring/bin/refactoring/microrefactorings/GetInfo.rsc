@@ -42,9 +42,17 @@ bool containsFields(set[loc] variables){
 loc getMethodDeclFromVariable(loc variable) 
 	= |java+method:///| + substring(variable.path,0,findFirst(variable.path,")")+1);
 
+loc getClassDeclFromMethod(loc method) 
+	= |java+class:///|+extractClassName(method);
+
+loc createNewFieldDeclaration(loc class, str name)
+	= |java+field:///|+ class.path + "/" + name;
 
 str extractClassName(loc method) 
 	= substring(method.path,0,findLast(method.path,"/"));
+
+str extractVariableNameFromDecl(loc variable)
+	= substring(variable.path,findLast(variable.path,"/")+1);
 	
 Expression determineLock(Declaration method){
 	str className = extractClassName(method@decl);
