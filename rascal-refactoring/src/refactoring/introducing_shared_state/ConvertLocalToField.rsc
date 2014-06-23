@@ -16,9 +16,9 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 		case c:class(name, exts, impls ,body):{
 			if(c@decl == targetedClassDecl){
 				body = for(b <- body){
-					append(convertLocalToField(b, local, targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl));
+					append(convertLocalToField(b, local, targetedMethodDecl, newFieldDecl, lockDecl));
 				}
-				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable("generated_lock_for_"+fieldName, 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[]))])]
+				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable(extractVariableNameFromDecl(lockDecl), 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[]))])]
 					 + [newFieldDeclaration]
 				     + body;
 				insert class(name, exts, impls ,body)[@modifiers=c@modifiers][@src = c@src][@decl=c@decl][@typ=c@typ];
@@ -29,7 +29,7 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 	}
 }
 
-Declaration convertLocalToField(Declaration f:field(t,frags), loc local, loc targetedClassDecl, loc targetedMethodDecl, loc newFieldDecl, loc lockDecl){
+Declaration convertLocalToField(Declaration f:field(t,frags), loc local, loc targetedMethodDecl, loc newFieldDecl, loc lockDecl){
 	for(fr <- frags){
 		if(fr@decl == newFieldDecl)
 			throw "Field with name <fieldName> already exists at <f@src>";
@@ -39,7 +39,7 @@ Declaration convertLocalToField(Declaration f:field(t,frags), loc local, loc tar
 	return f;
 }
 
-Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc local, loc targetedClassDecl, loc targetedMethodDecl, loc newfieldPath, loc lockDecl){
+Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc local, loc targetedMethodDecl, loc newfieldPath, loc lockDecl){
 	if(m@decl == targetedMethodDecl){
 		locking = simpleName(extractVariableNameFromDecl(lockDecl))[@decl = lockDecl][@typ = object()];
 		<mb, newFieldDeclaration> = addInASynchronizedBlock(mb, local, locking);
@@ -49,13 +49,13 @@ Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc loc
 		return m;
 }
 
-default Declaration convertLocalToField(Declaration d, loc local, loc targetedClassDecl, loc targetedMethodDecl, loc newfieldPath, loc lockDecl)
+default Declaration convertLocalToField(Declaration d, loc local, loc targetedMethodDecl, loc newfieldPath, loc lockDecl)
 	= d;
 	
 private tuple[loc, loc, loc, loc] findDeclarations(loc local){
 	loc targetedMethodDecl = getMethodDeclFromVariable(local);
 	loc targetedClassDecl = getClassDeclFromMethod(targetedMethodDecl);
-	loc fieldName = extractVariableNameFromDecl(local);
+	str fieldName = extractVariableNameFromDecl(local);
 	loc newFieldDecl = createNewFieldDeclaration(targetedClassDecl, fieldName);
 	loc lockDecl = createNewFieldDeclaration(targetedClassDecl, "generated_lock_for_"+fieldName);
 	return <targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl>;
