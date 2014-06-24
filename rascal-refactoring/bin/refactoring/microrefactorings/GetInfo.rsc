@@ -125,3 +125,22 @@ bool isFieldOf(Expression f, loc c) = (f@decl.scheme == "java+field" && substrin
 
 Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();
 Expression getInitFromVariable(Expression v:variable(_,_, init)) = init;
+
+Expression createQualifiedName(loc decl){
+	parts = split("/", decl.path);
+	parts = [p | p <- parts, p != ""];
+	parts = reverse(parts);
+	return createQualifiedName(parts, |java+class:///|);
+}
+
+Expression createQualifiedName(list[str] s:[x], loc scheme){
+	return simpleName(x)[@decl = (scheme + x)];
+}
+
+Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
+	path = x;
+	for(p <- xs){
+		path = p + "/" + path;
+	}
+	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path])[@decl = scheme + path];
+}
