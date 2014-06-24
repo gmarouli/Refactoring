@@ -5,6 +5,14 @@ import lang::java::jdt::m3::AST;
 import IO;
 import List;
 
+Declaration addMethod(Declaration targetClass:class(name, ext, impl, body), Declaration target){
+	return class(name, ext, impl, body+[target])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];	
+}
+			
+Declaration removeMethod(Declaration targetClass:class(name, ext, impl, body), loc targetMethod){
+	return class(name, ext, impl, [d | d <- body, isTargetMethod(d, targetMethod)])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];
+}
+
 Declaration desugarSynchronizedMethod(Declaration targetMethod:method(r, n, p, exc, impl)){
 	if(synchronized() in  (targetMethod@modifiers ? {})){
 		return method(r, n, p, exc, encloseInSynchronized(targetMethod))[@modifiers = (targetMethod@modifiers - \synchronized())][@src = targetMethod@src][@decl = targetMethod@decl][@typ = targetMethod@typ];

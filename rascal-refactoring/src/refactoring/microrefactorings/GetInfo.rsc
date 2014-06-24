@@ -15,6 +15,13 @@ public int index = -1;
 public bool field = false;
 public str fname = "";
 
+
+bool isTargetMethod(Declaration d, loc targetMethod){
+	if(isMethod(d))
+		return d@decl != targetMethod; 
+	else 
+		return true;
+}
 set[loc] collectVariables(Expression exp, set[loc] replacementVariables){
 	visit(exp){
 		case e:simpleName(_):{
@@ -152,3 +159,7 @@ Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
 	}
 	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path])[@decl = scheme + path];
 }
+
+bool isMethod(Declaration::method(_,_,_,_,_)) = true;
+bool isMethod(Declaration::method(_,_,_,_)) = true;
+default bool isMethod(Declaration e) = false;
