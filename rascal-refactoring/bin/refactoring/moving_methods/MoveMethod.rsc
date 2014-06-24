@@ -78,7 +78,7 @@ Declaration adaptMethod(MethodCase s:\static(decl, receiver), Declaration m:meth
 		case q:qualifiedName(_,_) => q
 		case e:simpleName(name):{
 			if(isFieldOf(e, from)){
-				insert qualifiedName(newParam, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
+				insert qualifiedName(reveiver, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
 			}
 		}
 	}
