@@ -4,10 +4,15 @@ import lang::java::jdt::m3::AST;
 import refactoring::moving_methods::MoveMethod;
 import refactoring::microrefactorings::GetInfo;
 
-Declaration adaptMethod(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
+Declaration adaptMethodsCode(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
+	from = getClassDeclFromMethod(m@decl);
 	body = adaptMethodCalls(s, m@decl, body);
 	body = top-down-break visit(body){
-		case q:qualifiedName(_,_) => q
+		case q:qualifiedName(_,_):{
+			if(isFieldOf(q, from)){
+				insert accessThroughVariable(q, receiver);//TODO : is this working?
+			}
+		}
 		case e:simpleName(name):{
 			if(isFieldOf(e, from)){
 				insert qualifiedName(reveiver, e)[@src = e@src][@decl = e@decl][@typ = e@typ];

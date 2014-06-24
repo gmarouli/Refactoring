@@ -46,7 +46,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	
 	methodConfig = getMovedMethodConfiguration(sourceClass, destinationClass, targetMethod);
 	
-	targetMethod = adaptInnerMethod(methodConfig, targetMethod);
+	targetMethod = adaptMethodsCodeMethod(methodConfig, targetMethod);
 	
 	asts = top-down-break visit(asts){
 		case c:class(name, exts, impls, body):{
@@ -132,7 +132,7 @@ Statement adaptMethodCalls(MethodCase s, loc oldDecl, Statement body){
 	}
 }
 
-Declaration adaptInnerMethod(MethodCase s:inParameters(loc decl, int index), Declaration m:method(r, name, ps, exs, body)){
+Declaration adaptMethodsCode(MethodCase s:inParameters(loc decl, int index), Declaration m:method(r, name, ps, exs, body)){
 	oldDecl = m@decl;
 	paramDecl = ps[index]@decl;
 	from = getClassDeclFromMethod(m@decl);
