@@ -1,5 +1,7 @@
 package Expressions;
 public class ExpressionGen {
+	public int  i;
+	Branching b;
 	public void add(Expressions.Branching l) 
 		{
 			if(true)
@@ -13,6 +15,8 @@ public class ExpressionGen {
 			if(false)
 			{
 				int  i = 8;
+				this.b.g.i++;
+				l.g.i--;
 			}
 		}
 

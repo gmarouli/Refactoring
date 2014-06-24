@@ -121,8 +121,16 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	return newMethodDecl;
 }
 
-bool isFieldOf(Expression f, loc c) = (f@decl.scheme == "java+field" && substring(f@decl.path,0,findLast(f@decl.path,"/")) == c.path);
+bool isFieldOf(Expression f:simpleName(_), loc c) = (f@decl.scheme == "java+field" && substring(f@decl.path,0,findLast(f@decl.path,"/")) == c.path);
+bool isFieldOf(Expression q:qualifiedName(exp, _), loc c) = isFieldOf(exp, c);
+default bool isFieldOf(Expression exp, c){
+	assert false : "What am I? <exp>";
+}
 
+loc getFirstAccessDecl(Expression f:simpleName(name)) 
+	= f@decl;
+loc getFirstAccessDecl(Expression q:qualifiedName(exp, _))
+	= getFirstAccessDecl(exp);
 Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();
 Expression getInitFromVariable(Expression v:variable(_,_, init)) = init;
 

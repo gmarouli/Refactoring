@@ -185,6 +185,15 @@ void prettyPrint(Expression v:this()){
 	code += "this";
 }
 
+void prettyPrint(Expression v:fieldAccess(_, exp, name)){
+	prettyPrint(exp);
+	code += "."+name;
+}
+
+void prettyPrint(Expression v:fieldAccess(_, name)){
+	code += name;
+}
+
 void prettyPrint(Expression v:variable(name,_, init)){
 	code += name + " = ";
 	prettyPrint(init);
