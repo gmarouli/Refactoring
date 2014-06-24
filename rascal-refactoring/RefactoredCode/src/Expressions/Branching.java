@@ -2,20 +2,9 @@ package Expressions;
 public class Branching extends Object {
 	static int  c;
 	ExpressionGen g;
-	public void add(Expressions.Branching l) 
+	public void sub(ExpressionGen p) 
 		{
-			if(true)
-			{
-				int  i = l.c + 5;
-				i = 7;
-				System.out.println(i);
-				l.c++;
-				l.add(this);
-			}
-			if(false)
-			{
-				int  i = 8;
-			}
+			p.add(this);
 		}
 
 }

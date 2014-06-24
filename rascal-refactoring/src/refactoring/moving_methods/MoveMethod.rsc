@@ -24,8 +24,8 @@ data MethodCase = \static(loc decl, Expression receiver)
 			| inFields(loc decl, Expression field, Declaration param)
 			| notTransferable(); 
 			
-Declaration removeMethod(Declaration targetClass:class(name, ext, impl, body), Declaration targetMethod){
-	return class(name, ext, impl, [d | d <- body, isTargetMethod(d, targetMethod@decl)])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];
+Declaration removeMethod(Declaration targetClass:class(name, ext, impl, body), loc targetMethod){
+	return class(name, ext, impl, [d | d <- body, isTargetMethod(d, targetMethod)])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];
 }
 
 bool isTargetMethod(Declaration d, loc targetMethod){
@@ -44,12 +44,30 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	
 	targetMethod = adaptMethod(methodConfig, targetMethod);
 	
-	return visit(asts){
-		case m:method(_, _, _, _, body):{
-			if(m@decl == methodDecl){
-				insert adaptMethod(methodConfig, m);
+	asts = top-down-break visit(asts){
+		case c:class(name, exts, impls, body):{
+			if(c@decl == sourceClass@decl){
+				insert removeMethod(c, methodDecl);
 			}
+			else if(c@decl == destinationClass@decl)
+				insert addMethod(c, targetMethod);
+			else
+				fail;
 		}
+	}
+	return visit(asts){
+		case m:methodCall(_, _, _, _):{
+			if(m@decl == methodDecl)
+				insert adaptMethodCall(methodConfig, m);
+			else
+				fail;
+		}
+		case m:methodCall(_, _, _):{
+			if(m@decl == methodDecl)
+				insert adaptMethodCall(methodConfig, m);
+			else
+				fail;
+		} 
 	}
 }
 
@@ -63,19 +81,27 @@ Statement adaptMethodCalls(MethodCase s:\static(decl, receiver), loc oldDecl, St
 	return visit(body){
 		case m:methodCall(isSuper, name, args):{
 			if(m@decl == oldDecl){
-				insert methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+				insert adaptMethodCall(s,m);
 			}
 			else
 				fail;
 		}
 		case m:methodCall(isSuper, rec, name, args):{
 			if(m@decl == oldDecl){
-				insert methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+				insert adaptMethodCall(s,m);
 			}
 			else
 				fail;
 		}
 	}
+}
+
+Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, name, args)){
+	return methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+}
+
+Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, rec, name, args)){
+	return methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 //Target class in parameters
@@ -84,10 +110,49 @@ Declaration adaptMethod(MethodCase s:inParameters(loc decl, int index), Declarat
 	paramDecl = ps[index]@decl;
 	from = getClassDeclFromMethod(m@decl);
 	ps = replaceWithNewParameter(ps, index, from, decl);
-	
 	body = renameParameterAndThis(body, paramDecl, ps[index]@decl, from);
+	body = adaptMethodCalls(s, m@decl, body);
 	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
 }
+
+Statement adaptMethodCalls(MethodCase s:inParameters(loc decl, int index), loc oldDecl, Statement body){
+	return visit(body){
+		case m:methodCall(isSuper, name, args):{
+			if(m@decl == oldDecl){
+				insert adaptMethodCall(s, m);
+			}
+			else
+				fail;
+		}
+		case m:methodCall(isSuper, rec, name, args):{
+			if(m@decl == oldDecl){
+				adaptMethodCall(s, m);
+			}
+			else
+				fail;
+		}
+	}
+}
+
+Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), m:methodCall(isSuper, name, args)){
+	from = getClassDeclFromMethod(decl);
+	rec = args[index];
+	if((index+1) < size(args))
+		args = args[0..index]+[this()[@decl = from]]+args[index+1..];
+	else
+		args = args[0..index]+[this()[@decl = from]];
+	return methodCall(isSuper, rec, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+}
+
+Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), Expression m:methodCall(isSuper, rec, name, args)){
+	newRec = args[index];
+	if((index+1) < size(args))
+		args = args[0..index]+[receiver]+args[index+1..];
+	else
+		args = args[0..index]+[rec];
+	return methodCall(isSuper, newRec, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+}
+
 
 list[Declaration] replaceWithNewParameter(list[Declaration] ps, int index, loc from, loc methodDecl){
 	newParam = replaceParameterType(ps[index], from, methodDecl);

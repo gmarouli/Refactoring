@@ -161,11 +161,3 @@ Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init), loc
 	= expressionStatement(assignment(simpleName(name)[@decl = fieldDecl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
 default Expression getAssignmentFromDeclaration(Expression v, loc fieldDecl)
 	= Statement::empty();
-
-Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, name, args)){
-	return m;
-}
-
-Declaration adaptMethodCall(loc targetMethod, loc sourceClass, loc destinationClass, Statement m:methodCall(isSuper, rcv, name, args)){
-	return m;
-}
