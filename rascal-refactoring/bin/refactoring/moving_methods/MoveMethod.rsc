@@ -25,7 +25,7 @@ default bool isMethod(Declaration e) = false;
 
 data MethodCase = \static(loc decl, Expression receiver)
 			| inParameters(loc decl, int index)
-			| inFields(loc decl, Expression field, Declaration param)
+			| inFields(loc decl, Expression fieldExp, Declaration param)
 			| notTransferable(); 
 			
 Declaration removeMethod(Declaration targetClass:class(name, ext, impl, body), loc targetMethod){
@@ -46,7 +46,11 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	
 	methodConfig = getMovedMethodConfiguration(sourceClass, destinationClass, targetMethod);
 	
-	targetMethod = adaptMethodsCodeMethod(methodConfig, targetMethod);
+	if(methodConfig :=  notTransferable()){
+		println("The refactoring cannot be applied to <methodDecl>");
+		return ast;
+	}
+	targetMethod = adaptMethodsCode(methodConfig, targetMethod);
 	
 	asts = top-down-break visit(asts){
 		case c:class(name, exts, impls, body):{
@@ -75,7 +79,14 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	}
 }
 
-
+Declaration adaptMethodsCode(MethodCase s:inFields(decl, fieldExp, param), Declaration m:method(r, name, list[Declaration] ps, exs, body)){
+	oldDecl = m@decl;
+	paramDecl = param@decl;
+	from = getClassDeclFromMethod(m@decl);
+	newParam = simpleName(extractVariableNameFromDecl(param@decl))[@decl = param@decl][@typ = class(from,[])];	
+	body = adaptCallsAndFields(body, decl, m@decl, from, fieldExp, newParam);
+	return method(r, name, ps + [param[@decl = m@decl]], exs, body)[@decl = decl][@modifiers = m@modifiers];
+}
 
 MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), Declaration to, Declaration m:method(r, n, ps, exs, b)){
 	//find the configuration if the method is static
@@ -113,24 +124,24 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 }
 
 
-Statement adaptMethodCalls(MethodCase s, loc oldDecl, Statement body){
-	return visit(body){
-		case m:methodCall(isSuper, name, args):{
-			if(m@decl == oldDecl){
-				insert adaptMethodCall(s,m);
-			}
-			else
-				fail;
-		}
-		case m:methodCall(isSuper, rec, name, args):{
-			if(m@decl == oldDecl){
-				insert adaptMethodCall(s,m);
-			}
-			else
-				fail;
-		}
-	}
-}
+//Statement adaptMethodCalls(MethodCase s, loc oldDecl, Statement body){
+//	return visit(body){
+//		case m:methodCall(isSuper, name, args):{
+//			if(m@decl == oldDecl){
+//				insert adaptMethodCall(s,m);
+//			}
+//			else
+//				fail;
+//		}
+//		case m:methodCall(isSuper, rec, name, args):{
+//			if(m@decl == oldDecl){
+//				insert adaptMethodCall(s,m);
+//			}
+//			else
+//				fail;
+//		}
+//	}
+//}
 
 Declaration adaptMethodsCode(MethodCase s:inParameters(loc decl, int index), Declaration m:method(r, name, ps, exs, body)){
 	oldDecl = m@decl;
@@ -176,7 +187,7 @@ Declaration replaceParameterType(Declaration p:parameter(simpleType(exp), name, 
 	return Declaration::parameter(simpleType(createQualifiedName(from)[@src = exp@src]), name, d)[@src = p@src][@decl = |java+parameter:///|+methodDecl.path+"/"+name][@typ = class(from,[])];
 }
 
-Statement renameParameterAndThis(Statement body, loc paramDecl, loc newParamDecl, loc from, loc to){
+Statement renameParameterAndThis(Statement body, loc oldMethodDecl, loc newMethodDecl, loc paramDecl, loc newParamDecl, loc from, loc to){
 	newParam = simpleName(extractVariableNameFromDecl(newParamDecl))[@decl = newParamDecl][@typ = class(from,[])];
 	//to = getClassDeclFromMethod(decl);
 	return top-down-break visit(body){
@@ -203,11 +214,62 @@ Statement renameParameterAndThis(Statement body, loc paramDecl, loc newParamDecl
 			}
 		}
 		case m:methodCall(isSuper, name, args):{
-			args = for(arg <- args){
-				expressionStatement(arg) = renameParameterAndThis(expressionStatement(arg), paramDecl, newParamDecl, from, to);
-				append(arg);
+			if(m@decl == oldMethodDecl){
+				args = for(arg <- args){
+					expressionStatement(arg) = renameParameterAndThis(expressionStatement(arg), paramDecl, newParamDecl, from, to);
+					append(arg);
+				}
+				insert methodCall(isSuper, newParam, name, args)[@decl = newMethodDecl][@typ = m@typ][@src = m@src];
 			}
-			insert methodCall(isSuper, newParam, name, args)[@decl = m@decl][@typ = m@typ][@src = m@src];
+			else
+				fail;
+		}
+	}
+}
+
+Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from, Expression fieldExp, Expression newParam){
+	return top-down-break visit(body){
+		case q:qualifiedName(_,_):{
+			if(isFieldOf(q, from)){
+				insert accessThroughVariable(q, newParam);
+			}
+			else
+				insert q;
+		}
+		case f:fieldAccess(_, _, _) => convertFieldToQualified(f, newParam)
+		case e:this():{
+			insert newParam[@src = e@src];
+		}
+		case e:simpleName(name):{
+			if(isFieldOf(e, from)){
+				insert qualifiedName(newParam, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
+			}
+		}
+		case m:methodCall(isSuper, name, list[Expression] args):{
+			if(m@decl == oldDecl){
+				args = for(arg <- args){
+					expressionStatement(arg) = adaptCallsAndFields(expressionStatement(arg), newDecl, oldDecl, from, fieldExp, newParam);
+					append(arg);
+				}
+				args += [newParam];
+				//careful not nice src
+				insert methodCall(isSuper, qualifiedName(newParam[@src = m@src], fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+			}
+			else 
+				fail;
+		}
+		case m:methodCall(isSuper, rec, name, args):{
+			if(m@decl == oldDecl){
+				args = for(arg <- args){
+					expressionStatement(arg) = adaptCallsAndFields(expressionStatement(arg), newDecl, oldDecl, from, fieldExp, newParam);
+					append(arg);
+				}
+				args += [rec];
+				//careful not nice src
+				insert methodCall(isSuper, qualifiedName(rec, fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+			}
+			else
+				fail;
 		}
 	}
 }
@@ -221,8 +283,21 @@ Expression convertFieldToQualified(Expression f:fieldAccess(_, t:this(), name), 
 	= qualifiedName(newParam[@src = t@src], simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ]);
 Expression convertFieldToQualified(Expression f:fieldAccess(_, exp, name), Expression newParam)
 	= qualifiedName(convertFieldToQualified(exp, newParam), simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ]);
+default Expression convertFieldToQualified(Expression f, Expression newParam){
+	println(f);
+	}
 
 Expression insertAccessThroughThis(Expression q:qualifiedName(simpleName(_), s:simpleName(name)), loc to)
 	= fieldAccess(false, \this()[@typ = class(to,[])][@decl = s@decl][@src = s@src],name);
 Expression insertAccessThroughThis(Expression q:qualifiedName(exp, s:simpleName(name)), loc to)
 	= fieldAccess(false, insertAccessThroughThis(exp, to), name);
+	
+Expression adaptMethodCall(MethodCase s:inFields(decl, fieldExp, param), Expression m:methodCall(isSuper, name, list[Expression] args)){
+	from = getClassDeclFromMethod(decl);
+	args += [\this()[@typ = class(from,[])]];
+	return methodCall(isSuper, fieldExp[@src = m@src], name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+}
+
+Expression adaptMethodCall(MethodCase s:inFields(decl, fieldExp, param), Expression m:methodCall(isSuper, rec, name, args)){	
+	return methodCall(isSuper, qualifiedName(rec, fieldExp[@src = m@src]), name, args + [rec])[@decl = decl][@typ = m@typ][@src = m@src];
+}

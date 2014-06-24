@@ -4,7 +4,7 @@ public class Branching extends Object {
 	ExpressionGen g;
 	public void sub(ExpressionGen p) 
 		{
-			p.add(this);
+			g.add(this);
 		}
 
 }
