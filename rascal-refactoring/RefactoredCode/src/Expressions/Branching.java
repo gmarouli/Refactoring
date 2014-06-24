@@ -4,7 +4,10 @@ public class Branching extends Object {
 	ExpressionGen g;
 	public void sub(ExpressionGen p) 
 		{
-			g.add(this);
+			synchronized(Expressions.Branching.class)
+				{
+					Expressions.ExpressionGen.add();
+				}
 		}
 
 }

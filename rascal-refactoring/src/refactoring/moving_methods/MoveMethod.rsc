@@ -94,7 +94,6 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 //Static method
 Declaration adaptMethodsCode(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
 	from = getClassDeclFromMethod(m@decl);
-	body = adaptMethodCalls(s, m@decl, body);
 	body = top-down-break visit(body){
 		case q:qualifiedName(_,_):{
 			if(isFieldOf(q, from)){

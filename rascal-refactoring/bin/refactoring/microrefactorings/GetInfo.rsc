@@ -62,17 +62,11 @@ str extractVariableNameFromDecl(loc variable)
 	= substring(variable.path,findLast(variable.path,"/")+1);
 	
 Expression determineLock(Declaration method){
-	str className = extractClassName(method@decl);
+	loc classDecl = getClassDeclFromMethod(method@decl);
 	if(static() in (method@modifiers ? {})){
-		return Expression::\type(
-								simpleType(
-									simpleName(className)
-										[@src = method@src]
-										[@decl = |java+class:///|+className]
-										[@typ = TypeSymbol::class(|java+class:///|+className,[])]
-								)
-							)[@src = method@src]
-							 [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [TypeSymbol::class(|java+class:///|+className,[])])];
+		Expression l = createQualifiedName(classDecl); 
+		return Expression::\type(simpleType(l))[@src = method@src]
+											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [TypeSymbol::class(classDecl,[])])];
 	}
 	else{
 		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(|java+class:///|+className,[])];

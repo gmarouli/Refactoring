@@ -194,6 +194,12 @@ void prettyPrint(Expression v:fieldAccess(_, name)){
 	code += name;
 }
 
+void prettyPrint(Expression v:\type(exp)){
+	prettyPrint(exp);
+	code += ".class";
+}
+
+
 void prettyPrint(Expression v:variable(name,_, init)){
 	code += name + " = ";
 	prettyPrint(init);
