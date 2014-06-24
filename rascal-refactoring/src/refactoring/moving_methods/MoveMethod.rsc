@@ -4,6 +4,7 @@ import IO;
 import List;
 import String;
 import lang::java::jdt::m3::AST;
+import lang::java::m3::TypeSymbol;
 import refactoring::microrefactorings::GetInfo;
 
 
@@ -14,9 +15,9 @@ Declaration addMethod(Declaration targetClass:class(name, ext, impl, body), Decl
 	
 }
 
-bool isMethod(method(_,_,_,_,_)) = true;
-bool isMethod(method(_,_,_,_)) = true;
-default bool isMethod(e) = false;
+bool isMethod(Declaration::method(_,_,_,_,_)) = true;
+bool isMethod(Declaration::method(_,_,_,_)) = true;
+default bool isMethod(Declaration e) = false;
 
 data MethodCase = \static(loc decl, Expression receiver)
 			| inParameters(loc decl, int index)
@@ -52,6 +53,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	}
 }
 
+//Static method
 Declaration adaptMethod(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
 	body = adaptMethodCalls(s, m@decl, body);
 	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
@@ -76,20 +78,52 @@ Statement adaptMethodCalls(MethodCase s:\static(decl, receiver), loc oldDecl, St
 	}
 }
 
-Statement adaptMethodCalls(MethodCase s:inParameters(loc decl, int index), loc oldDecl, Statement body){
-	return visit(body){
-		case m:methodCall(isSuper, rec, name, args):{
-			if(m@decl == oldDecl){
-				if(rec := Expression::this())
-					fail;
-				if((index+1) < size(args))
-					newArgs = args[0..index]+[rec]+args[index+1..];
-				else
-					newArgs = args[0..index]+[rec];
-				insert methodCall(isSuper, args[index], name, newArgs)[@decl = decl][@typ = m@typ][@src = m@src];
+//Target class in parameters
+Declaration adaptMethod(MethodCase s:inParameters(loc decl, int index), Declaration m:method(r, name, ps, exs, body)){
+	oldDecl = m@decl;
+	paramDecl = ps[index]@decl;
+	from = getClassDeclFromMethod(m@decl);
+	ps = replaceWithNewParameter(ps, index, from, decl);
+	
+	body = renameParameterAndThis(body, paramDecl, ps[index]@decl, from);
+	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
+}
+
+list[Declaration] replaceWithNewParameter(list[Declaration] ps, int index, loc from, loc methodDecl){
+	newParam = replaceParameterType(ps[index], from, methodDecl);
+	if((index+1) < size(ps))
+		ps = ps[0..index]+[newParam]+ps[index+1..];
+	else
+		ps = ps[0..index]+[newParam];
+	return ps;
+}
+
+Declaration replaceParameterType(Declaration p:parameter(simpleType(exp), name, d), loc from, loc methodDecl){
+	return Declaration::parameter(simpleType(createQualifiedName(from)[@src = exp@src]), name, d)[@src = p@src][@decl = |java+parameter:///|+methodDecl.path+"/"+name][@typ = class(from,[])];
+}
+
+Statement renameParameterAndThis(Statement body, loc paramDecl, loc newParamDecl, loc from){
+	newParam = simpleName(extractVariableNameFromDecl(newParamDecl))[@decl = newParamDecl][@typ = class(from,[])];
+	
+	return top-down-break visit(body){
+		case q:qualifiedName(_,_) => q
+		case e:this():{
+			return newParam[@src = e@src];
+		}
+		case e:simpleName(name):{
+			if(e@decl == paramDecl){
+				insert this()[@decl = paramDecl][@typ = e@typ];
 			}
-			else
-				fail;
+			else if(isFieldOf(e, from)){
+				insert qualifiedName(newParam, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
+			}
+		}
+		case m:methodCall(isSuper, name, args):{
+			args = for(arg <- args){
+				expressionStatement(arg) = renameParameterAndThis(expressionStatement(arg), paramDecl, newParamDecl, from);
+				append(arg);
+			}
+			insert methodCall(isSuper, newParam, name, args)[@decl = m@decl][@typ = m@typ][@src = m@src];
 		}
 	}
 }

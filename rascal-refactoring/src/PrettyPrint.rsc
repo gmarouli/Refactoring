@@ -106,8 +106,8 @@ void prettyPrint(Declaration f:variables(t, frags), str ident){
 
 void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
 	code += ident;
-	for(m <- (m@modifiers ? [])){
-		prettyPrint(m);
+	for(modi <- (m@modifiers ? [])){
+		prettyPrint(modi);
 	}
 	prettyPrint(t);
 	code += name +"(";
@@ -131,8 +131,8 @@ void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
 
 void prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
 	code += ident;
-	for(m <- (m@modifiers ? [])){
-		prettyPrint(m);
+	for(modi <- (m@modifiers ? [])){
+		prettyPrint(modi);
 	}
 	prettyPrint(t);
 	code += name +"(";
@@ -179,6 +179,10 @@ void prettyPrint(Type i:\void()){
 
 void prettyPrint(Expression v:variable(name,_)){
 	code += name;
+}
+
+void prettyPrint(Expression v:this()){
+	code += "this";
 }
 
 void prettyPrint(Expression v:variable(name,_, init)){
