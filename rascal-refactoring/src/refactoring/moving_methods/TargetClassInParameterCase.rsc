@@ -16,25 +16,6 @@ Declaration adaptMethod(MethodCase s:inParameters(loc decl, int index), Declarat
 	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
 }
 
-Statement adaptMethodCalls(MethodCase s:inParameters(loc decl, int index), loc oldDecl, Statement body){
-	return visit(body){
-		case m:methodCall(isSuper, name, args):{
-			if(m@decl == oldDecl){
-				insert adaptMethodCall(s, m);
-			}
-			else
-				fail;
-		}
-		case m:methodCall(isSuper, rec, name, args):{
-			if(m@decl == oldDecl){
-				adaptMethodCall(s, m);
-			}
-			else
-				fail;
-		}
-	}
-}
-
 Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), m:methodCall(isSuper, name, args)){
 	from = getClassDeclFromMethod(decl);
 	rec = args[index];

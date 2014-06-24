@@ -107,3 +107,23 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 	}
 	return notTransferable();
 }
+
+
+Statement adaptMethodCalls(MethodCase s, loc oldDecl, Statement body){
+	return visit(body){
+		case m:methodCall(isSuper, name, args):{
+			if(m@decl == oldDecl){
+				insert adaptMethodCall(s,m);
+			}
+			else
+				fail;
+		}
+		case m:methodCall(isSuper, rec, name, args):{
+			if(m@decl == oldDecl){
+				insert adaptMethodCall(s,m);
+			}
+			else
+				fail;
+		}
+	}
+}
