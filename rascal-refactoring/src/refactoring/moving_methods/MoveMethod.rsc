@@ -24,6 +24,8 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 		println("The refactoring cannot be applied to <methodDecl>");
 		return ast;
 	}
+	
+	targetMethod = desugarSynchronizedMethod(targetMethod);
 	targetMethod = adaptMethodsCode(methodConfig, targetMethod);
 	
 	asts = top-down-break visit(asts){

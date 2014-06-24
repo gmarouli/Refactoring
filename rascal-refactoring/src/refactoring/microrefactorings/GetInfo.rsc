@@ -80,7 +80,7 @@ Expression determineLock(Declaration method){
 }
 
 Statement encloseInSynchronized(Declaration method:method(_,_,_,_,impl))
-	= synchronizedStatement(determineLock(method),impl)[@src = method@src];
+	= block([synchronizedStatement(determineLock(method),impl)[@src = method@src]])[@src = method@src];
 	
 Declaration getMethodFromDecl(set[Declaration] asts, loc decl){
 	for (/m:method(_,_,_,_,_) <- asts){
