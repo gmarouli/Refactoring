@@ -5,6 +5,7 @@ import String;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import refactoring::microrefactorings::GetInfo;
+import refactoring::rearranging_code::GenerateIds;
 
 set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
@@ -78,7 +79,7 @@ tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockSt
 		}
 		case s:\if(cond, b):{
 			if(nreplaceOn)
-				<cond, exp, replacementVariables> = inlineLocal(cond, local, successfull,inControlStatement, exp, replacementVariables);
+				<cond, exp, replacementVariables> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables);
 			<b, successful, nreplaceOn, exp, replacementVariables> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables);
 			insert \if(cond, b)[@src = s@src];
 		}
@@ -245,7 +246,7 @@ tuple[Expression, Expression, set[loc]] inlineLocal(Expression b, loc local, boo
 		}
 		case e:simpleName(_):{
 			if(e@decl == local){
-				insert exp;
+				insert addGeneratedId(exp);
 			}
 			else{
 				fail;

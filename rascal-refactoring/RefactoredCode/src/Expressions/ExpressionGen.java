@@ -1,24 +1,11 @@
 package Expressions;
 public class ExpressionGen {
-	public int  i;
-	Branching b;
-	public static void add() 
+	volatile boolean  a = false;
+	volatile boolean  b = false;
+	void m1() 
 		{
-			synchronized(Expressions.Branching.class)
-				{
-					if(true)
-					{
-						int  i = c + 5;
-						i = 7;
-						System.out.println(i);
-						c++;
-						Expressions.ExpressionGen.add();
-					}
-					if(false)
-					{
-						int  i = 8;
-					}
-				}
-		}
+;			while(!b);	
+			if((a = true))
+;		}
 
 }

@@ -177,6 +177,10 @@ void prettyPrint(Type i:\void()){
 	code += "void ";
 }
 
+void prettyPrint(Type i:\boolean()){
+	code += "boolean ";
+}
+
 void prettyPrint(Expression v:variable(name,_)){
 	code += name;
 }
@@ -231,6 +235,11 @@ void prettyPrint(Expression e:infix(lhs,operator, rhs, exts)){
 	}
 }
 
+void prettyPrint(Expression e:prefix(operator, operand)){
+	code += operator;
+	prettyPrint(operand);
+}
+
 void prettyPrint(Expression e:postfix(operand, operator)){
 	prettyPrint(operand);
 	code += operator;
@@ -267,7 +276,22 @@ void prettyPrint(Expression q:qualifiedName(qName,name)){
 	prettyPrint(name);
 }
 
-void prettyPrint(Statement s:empty()){
+void prettyPrint(Expression b:\bracket(exp)){
+	code += "(";
+	prettyPrint(exp);
+	code += ")";
+}
+
+void prettyPrint(Statement s:empty(),_){
+code += ";";
+}
+
+void prettyPrint(Statement s:\while(cond, stmt), str ident){
+	code += ident;
+	code += "while(";
+	prettyPrint(cond);
+	code += ")";
+	prettyPrint(stmt, ident + "\t");
 }
 
 default void prettyPrint(Statement s, str ident){
