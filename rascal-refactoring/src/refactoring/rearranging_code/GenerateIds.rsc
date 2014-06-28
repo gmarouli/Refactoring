@@ -33,6 +33,8 @@ Expression addGeneratedId(Expression exp){
     	case e:\fieldAccess(isSuper, addGeneratedId(exp), name) => \fieldAccess(isSuper, exp, name)[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
    		case e:\fieldAccess(_, _) => e[@src = generateId(e@src)][@oldSrc = e@src]
    		case e:\assignment(lhs, op, rhs) => assignment(addGeneratedId(lhs), op, addGeneratedId(rhs))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+   		case e:\postfix(operand, operator) => postfix(addGeneratedId(operand), operator)[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+   		case e:\prefix(operator, operand) => prefix(operator, addGeneratedId(operand))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
 	}
 }
 

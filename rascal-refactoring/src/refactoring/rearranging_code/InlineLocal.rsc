@@ -27,8 +27,8 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 				<b, successful, _, _, vs, replacementIds> = inlineLocal(b, local, false, false, false, Expression::null(), {}, replacementIds);
 				if(successful)
 					println("The refactoring InlineLocal of <local> finished successfully!");
-				if(containsFields(vs))
-					println("Warning: this refactoring moved code that contained shared variables (fields). In concurrent execution the value assigned from inlining could be different.");
+				if(containsFieldsOrMethods(vs))
+					println("Warning: this refactoring inlined code that contained shared variables (fields) or method calls. In concurrent execution the value assigned from inlining could be different.");
 				insert method(r, n, ps, exs, b)[@src = m@src][@decl = m@decl][@typ = m@typ];
 			}
 			else
@@ -72,13 +72,67 @@ bool allAssignsToLocalRemoved(Program p, loc local){
 }
 
 bool preserveDataFlow(Program original, Program refactored, loc local, map[loc, set[loc]] replacementIds){
-	originStmt = {stmt | stmt <- original.statements, isDataAccess(stmt)};
-	refactoredStmt = {stmt | stmt <- refactored.statements, isDataAccess(stmt)};
-	readLocal = {};
-	startNodes = {getIdFromStmt(stmt) | stmt <- originStmt, localDep:read(id, local, _) <- originStmt, getDependencyFromStmt(stmt) == id};
-	iprintln(replacementIds);
-	return false;
+	//remove local variable assignments
+	//original.statements = {stmt | stmt <- original.statements, getVarFromStmt(stmt) != local};
+	
+	//create maps to speed up the look up
+	map[loc, Stmt] originalStmts = (getIdFromStmt(stmt) : stmt | stmt <- original.statements);
+	map[loc, Stmt] refactoredStmts = (getIdFromStmt(stmt) : stmt | stmt <- refactored.statements);
+	
+	//Get the changed stmts
+	changes = {stmt | stmt <- original.statements} - { stmt | stmt <- refactored.statements};
+	for(stmt <- changes){
+		if(getVarFromStmt(stmt) == local)
+			continue;
+		//if the changed stmt is not one of the inlined expressions
+		if(!(getIdFromStmt(stmt) in replacementIds)){
+			//and the original did not refer to the local variable:
+			if(getVarFromStmt(originalStmts[getDependencyFromStmt(stmt)]) != local){
+				println("Error: the dependency of <stmt> changed to <refactoredStmts[getIdFromStmt(stmt)]>!");
+				return false;
+			}
+		}
+		else{
+			//sameIds = -1 : unknown, 0 : no, 1 : yes
+			int sameIds = -1;  
+			//check that all the refactored stmts refer to either to the same id or the refactored one
+			for(refactoredId <- replacementIds[getIdFromStmt(stmt)]){
+				//if the dependency of the ids are the same
+				refactoredStmt = refactoredStmts[refactoredId];
+				if(getDependencyFromStmt(refactoredStmt) == getDependencyFromStmt(stmt)){
+					if(sameIds == 0){
+						println("Error: <stmt> does not have consistent dependencies!");
+						return false;
+					}
+					else{
+						sameIds = 1;
+					}
+				}
+				//if the dependency id is not the same 
+				else{
+					if(sameIds == 1){
+						println("Error: <stmt> does not have consistent dependencies!");
+						return false;
+					}
+					else{
+						//check if it refers to the replace one
+						if(!(getDependencyFromStmt(refactoredStmt) in (replacementIds[getDependencyFromStmt(stmt)] ? {}))){
+							println("Error: <stmt> does not have consistent dependencies!");
+							return false;
+						}
+						sameIds = 0;
+					}
+				}
+			}
+		}
+	}
+	return true;
 }
+
+bool isAssign(Stmt e:assign(_,_,_))
+	= true;
+default bool isAssign(Stmt e)
+	= false;
 	
 tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLocal(Statement blockStmt, loc local, bool successful, bool inControlStatement, bool replaceOn, Expression exp, set[loc] replacementVariables, map[loc,set[loc]] replacementIds){
 	nreplaceOn = replaceOn;
@@ -317,6 +371,15 @@ tuple[Expression, Expression, set[loc], map[loc,set[loc]]] inlineLocal(Expressio
 map[loc, set[loc]] mapOriginalIdsWithInlined(temp, map[loc, set[loc]] replacementIds){
 	visit(temp){
 		case e:simpleName(_):{
+			replacementIds[e@oldSrc] = (replacementIds[e@oldSrc] ? {}) + {e@src};
+		}
+		case e:assignment(_,_,_):{
+			replacementIds[e@oldSrc] = (replacementIds[e@oldSrc] ? {}) + {e@src};
+		}
+		case e:postfix(_,_):{
+			replacementIds[e@oldSrc] = (replacementIds[e@oldSrc] ? {}) + {e@src};
+		}
+		case e:prefix(_,_):{
 			replacementIds[e@oldSrc] = (replacementIds[e@oldSrc] ? {}) + {e@src};
 		}
 	}

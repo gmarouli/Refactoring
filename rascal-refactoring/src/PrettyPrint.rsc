@@ -173,6 +173,11 @@ void prettyPrint(Type i:\int()){
 	code += "int ";
 }
 
+void prettyPrint(Type i:\arrayType(t)){
+	prettyPrint(t);
+	code += "[] ";
+}
+
 void prettyPrint(Type i:\void()){
 	code += "void ";
 }

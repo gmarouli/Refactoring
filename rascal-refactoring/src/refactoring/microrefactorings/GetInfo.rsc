@@ -21,6 +21,12 @@ set[loc] collectVariables(Expression exp, set[loc] replacementVariables){
 		case e:simpleName(_):{
 			replacementVariables += {e@decl};
 		}
+		case e:methodCall(_,_,_):{
+			replacementVariables += {e@decl};
+		}
+		case e:methodCall(_,_,_,_):{
+			replacementVariables += {e@decl};
+		}
 	}
 	return replacementVariables;
 }
@@ -33,9 +39,11 @@ bool isLocalAssignment(Expression e:assignment(lhs,_,_), loc local)
 default bool isLocalAssignment(Expression e, loc local)
 	= false;
 
-bool containsFields(set[loc] variables){
+bool containsFieldsOrMethods(set[loc] variables){
 	for(v <- variables){
 		if(v.scheme == "java+field")
+			return true;
+		if(v.scheme == "java+method")
 			return true;
 	}
 	return false;
