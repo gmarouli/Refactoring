@@ -1,6 +1,7 @@
 module refactoring::rearranging_code::GenerateIds
 
 import lang::java::jdt::m3::AST;
+import IO;
 
 int offset = 0;
 

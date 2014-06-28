@@ -141,13 +141,13 @@ loc findBlockContainingLocal(Statement b, loc local){
 	throw "Error: Local variable <local> was not found!";
 }
 
-tuple[Statement, Statement, Declaration] splitDeclarations(Statement s:declarationStatement(variables(t, frags)), loc local, loc fieldDecl){
+tuple[Statement, Statement, Declaration] splitDeclarations(Statement s:declarationStatement(vars:variables(t, frags)), loc local, loc fieldDecl){
 	Statement init = Statement::empty();
 	Statement otherDecl = Statement::empty();
 	Declaration removed;
 	frags =	for(f <- frags){
 		if(f@decl == local){
-			init = getAssignmentFromDeclaration(f, fieldDecl);
+			init = getAssignmentFromDeclaration(f, s@src, fieldDecl);
 			removed = createVariableDeclaration(t,f, fieldDecl);
 		}
 		else{
@@ -165,7 +165,7 @@ Declaration createVariableDeclaration(Type t, Expression v:variable(name, d, _),
 Declaration createVariableDeclaration(Type t, Expression v:variable(name, d), loc fieldDecl)
 	= Declaration::field(t,[v[@decl = fieldDecl]])[@modifiers = [\private()]];
 
-Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init), loc fieldDecl)
-	= expressionStatement(assignment(simpleName(name)[@decl = fieldDecl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = v@src];
+Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init), loc assignSrc, loc fieldDecl)
+	= expressionStatement(assignment(simpleName(name)[@decl = fieldDecl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = assignSrc];
 default Expression getAssignmentFromDeclaration(Expression v, loc fieldDecl)
 	= Statement::empty();

@@ -7,13 +7,7 @@ import List;
 import IO;
 
 anno loc Declaration @ origDecl;
-
-loc newMethodDecl;
 public set[loc] convertedToPublic = {};
-public bool swap = false;
-public int index = -1;
-public bool field = false;
-public str fname = "";
 
 
 bool isTargetMethod(Declaration d, loc targetMethod){
