@@ -1,15 +1,25 @@
 module refactoring::rearranging_code::InlineLocal
 
 import IO;
+import Set;
 import String;
+
+import PrettyPrint;
+
 import lang::java::jdt::m3::AST;
-import lang::java::m3::TypeSymbol;
+
+import lang::sccfg::ast::DataFlowLanguage;
+import lang::sccfg::converter::Java2DFG;
+import lang::sccfg::converter::util::Getters;
+import lang::sccfg::converter::util::DataFlowGraph;
+
 import refactoring::microrefactorings::GetInfo;
 import refactoring::rearranging_code::GenerateIds;
+//import refactoring::microrefactorings::MicroRefactorings;
 
 set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
-	return visit(asts){
+	refactoredAsts = visit(asts){
 		case m:method(r, n, ps, exs, b):{
 			if(m@decl == targetedMethodDecl){
 				<b, successful, _, _, vs> = inlineLocal(b, local, false, false, false, Expression::null(), {});
@@ -23,6 +33,35 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 				fail;
 		}
 	}
+	
+	<p, g> = createDFG(asts);
+	<pR,gR> = createDFG(refactoredAsts);
+		
+	if(checkInlineLocal(p,pR, local)){
+		println("Refactoring InlineLocal successful!");
+		prettyPrint(refactoredAsts,"");
+		return refactoredAsts;
+	}
+	else{
+		println("Refactoring failed!");
+		return asts;
+	}
+}
+
+bool checkInlineLocal(Program original, Program refactored, loc local){
+	if(!allAssignsToLocalRemoved(refactored, local)){
+		println("Error: assigns to the local variable are not removed!");
+		return false;
+	}
+	return true;
+}
+
+bool allAssignsToLocalRemoved(Program p, loc local){
+	for(assign(_, var, _) <- p.statements){
+		if(var == local)
+			return false;
+	}
+	return true;
 }
 	
 tuple[Statement, bool, bool, Expression, set[loc]] inlineLocal(Statement blockStmt, loc local, bool successful, bool inControlStatement, bool replaceOn, Expression exp, set[loc] replacementVariables){
