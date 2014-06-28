@@ -3,6 +3,7 @@
 	<name>rascal-refactoring</name>
 	<comment></comment>
 	<projects>
+		<project>Java2SCCFG</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

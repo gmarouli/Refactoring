@@ -3,20 +3,27 @@ module refactoring::introducing_shared_state::ConvertLocalToField
 import IO;
 import Set;
 import String;
+
+import PrettyPrint;
+
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
+
 import lang::sccfg::ast::DataFlowLanguage;
+import lang::sccfg::converter::Java2DFG;
 import lang::sccfg::converter::util::Getters;
+import lang::sccfg::converter::util::DataFlowGraph;
+
 import refactoring::microrefactorings::GetInfo;
-import refactoring::microrefactorings::MicroRefactorings;
 import refactoring::rearranging_code::GenerateIds;
+import refactoring::microrefactorings::MicroRefactorings;
 
 Declaration newFieldDeclaration;
 
 set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 	<targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl> = findDeclarations(local);
 	
-	return top-down-break visit(asts){
+	refactoredAst = top-down-break visit(asts){
 		case c:class(name, exts, impls ,body):{
 			if(c@decl == targetedClassDecl){
 				body = for(b <- body){
@@ -30,6 +37,19 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 			else
 				fail;
 		}
+	}
+	
+	<p, g> = createDFG(asts);
+	<pR,gR> = createDFG(refactoredAst);
+		
+	if(checkConvertLocalToField(p,pR, local)){
+		println("Refactoring ConvertLocalToField successful!");
+		prettyPrint(refactoredAst,"");
+		return refactoredAst;
+	}
+	else{
+		println("Refactoring failed!");
+		return asts;
 	}
 }
 
@@ -67,7 +87,7 @@ private tuple[loc, loc, loc, loc] findDeclarations(loc local){
 	return <targetedClassDecl, targetedMethodDecl, newFieldDecl, lockDecl>;
 }
 
-bool checkConvertLocalToField(Program original, Program refactored){
+bool checkConvertLocalToField(Program original, Program refactored, loc local){
 	//The only changes in declarations are the two added fields
 	dif = refactored.decls - original.decls;
 	loc l;
@@ -84,6 +104,11 @@ bool checkConvertLocalToField(Program original, Program refactored){
 		return false;
 	}
 	
+	//Map all accesses to local to the field
+	if(!mapAccessesOfLocalToField(original, local, refactored, var)){
+		println("Missing accesses");
+		return false;
+	}
 	
 	//No synchronization edges lost
 	origSynch = getSynchronizationActions(original);
@@ -104,6 +129,7 @@ bool checkConvertLocalToField(Program original, Program refactored){
 		println("Error: unguarded access of new field!");
 		return false;
 	}
+	
 	return true;
 }
 
@@ -123,4 +149,10 @@ set[Stmt] removeAllSynchronizationEdgesOfWithTheSameId(set[Stmt] stmts, loc var)
 	}
 	return { stmt | stmt <- stmts, src != getIdFromStmt(stmt), src != getDependencyFromStmt(stmt), getDependencyFromStmt(stmt).length > 0};
 	
+}
+
+bool mapAccessesOfLocalToField(Program original, loc local, Program refactored, loc var){
+	accesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- original.statements, getVarFromStmt(stmt) == local};
+	newAccesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- refactored.statements, getVarFromStmt(stmt) == var};
+	return accesses == newAccesses;
 }

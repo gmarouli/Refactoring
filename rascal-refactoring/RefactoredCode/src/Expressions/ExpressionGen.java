@@ -9,8 +9,9 @@ public class ExpressionGen {
 			synchronized(generated_lock_for_x)
 				{
 					x = (a = true);
-					while(!b);					if(x)
-;				}
+					while(!b);					
+					if(x);
+				}
 		}
 
 }
