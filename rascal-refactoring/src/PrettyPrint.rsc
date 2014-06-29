@@ -95,6 +95,20 @@ void prettyPrint(Declaration f:field(t, frags), str ident){
 }
 
 void prettyPrint(Declaration f:variables(t, frags), str ident){
+	code += ident;
+	for(m <- (f@modifiers ? [])){
+		prettyPrint(m);
+	}
+	prettyPrint(t);
+	code += " ";
+	for(fr <- frags){
+		prettyPrint(fr);
+		code += ", ";
+	}
+	code = substring(code, 0, findLast(code, ",")) + ";\n";
+}
+
+void prettyPrint(Declaration f:variables(t, frags), str ident){
 	prettyPrint(t);
 	code += " ";
 	for(fr <- frags){
@@ -222,6 +236,10 @@ void prettyPrint(Expression e:number(n)){
 	code += n;
 }
 
+void prettyPrint(Expression e:stringLiteral(s)){
+	code += "\""+s+"\"";
+}
+
 void prettyPrint(Expression e:booleanLiteral(b)){
 	if(b)
 		code += "true";
@@ -297,6 +315,35 @@ void prettyPrint(Statement s:\while(cond, stmt), str ident){
 	prettyPrint(cond);
 	code += ")";
 	prettyPrint(stmt, ident + "\t");
+}
+
+void prettyPrint(Statement s:\for(init, cond, update, body), str ident){
+	code += ident;
+	code += "for(";
+	if(init != []){
+		for(i <- init){
+			prettyPrint(i);
+			code += ",";
+		}
+		code = substring(code, 0, findLast(code, ","));
+		code = substring(code, 0, findLast(code, ";"));
+	}
+	code += "; ";
+	prettyPrint(cond);
+	code += "; ";
+	if(update != []){
+		for(u <- update){
+			prettyPrint(u);
+			code += ",";
+		}
+		code = substring(code, 0, findLast(code, ","));
+	}
+	code += ")";
+	prettyPrint(body,"\t"+ident);		
+}
+
+void prettyPrint(Expression e:declarationExpression(exp)){
+	prettyPrint(exp,"");
 }
 
 default void prettyPrint(Statement s, str ident){

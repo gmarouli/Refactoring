@@ -56,7 +56,7 @@ bool checkInlineLocal(Program original, Program refactored, loc local, map[loc, 
 		return false;
 	}
 	
-	if(!preserveDataFlow(original, refactored, local, replacementIds)){
+	if(!preserveGraphFlow(original, refactored, local, replacementIds)){
 		println("Error: data flow is not preserved!");
 		return false;
 	}
@@ -71,9 +71,7 @@ bool allAssignsToLocalRemoved(Program p, loc local){
 	return true;
 }
 
-bool preserveDataFlow(Program original, Program refactored, loc local, map[loc, set[loc]] replacementIds){
-	//remove local variable assignments
-	//original.statements = {stmt | stmt <- original.statements, getVarFromStmt(stmt) != local};
+bool preserveGraphFlow(Program original, Program refactored, loc local, map[loc, set[loc]] replacementIds){
 	
 	//create maps to speed up the look up
 	map[loc, Stmt] originalStmts = (getIdFromStmt(stmt) : stmt | stmt <- original.statements);
@@ -81,6 +79,8 @@ bool preserveDataFlow(Program original, Program refactored, loc local, map[loc, 
 	
 	//Get the changed stmts
 	changes = {stmt | stmt <- original.statements} - { stmt | stmt <- refactored.statements};
+	refactoredAdditions =  { stmt | stmt <- refactored.statements} - {stmt | stmt <- original.statements};
+	
 	for(stmt <- changes){
 		if(getVarFromStmt(stmt) == local)
 			continue;
@@ -120,12 +120,12 @@ bool preserveDataFlow(Program original, Program refactored, loc local, map[loc, 
 							println("Error: <stmt> does not have consistent dependencies!");
 							return false;
 						}
-						sameIds = 0;
+						sameIds = 0;					
 					}
 				}
 			}
 		}
-	}
+	}	
 	return true;
 }
 
