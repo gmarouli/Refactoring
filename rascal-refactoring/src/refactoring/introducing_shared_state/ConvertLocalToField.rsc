@@ -90,6 +90,7 @@ private tuple[loc, loc, loc, loc] findDeclarations(loc local){
 bool checkConvertLocalToField(Program original, Program refactored, loc local){
 	//The only changes in declarations are the two added fields
 	dif = refactored.decls - original.decls;
+
 	loc l;
 	loc var;
 	for(attribute(name, _) <- dif){
@@ -119,7 +120,7 @@ bool checkConvertLocalToField(Program original, Program refactored, loc local){
 	}
 	
 	//The only new synchronization edges consern the lock, and there is only one id two ids one of the block and possible ones in assignment
-	if(removeAllSynchronizationEdgesOfWithTheSameId(refactSynch, l) - origSynch == {}){
+	if(removeAllSynchronizationEdgesOfWithTheSameId(refactSynch, l) - origSynch != {}){
 		println("Error: Synchronization Stmt gained unwanted synchronization edges!");
 		return false;
 	}
