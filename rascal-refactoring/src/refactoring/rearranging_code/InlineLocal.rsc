@@ -11,7 +11,6 @@ import lang::java::jdt::m3::AST;
 import lang::sccfg::ast::DataFlowLanguage;
 import lang::sccfg::converter::Java2DFG;
 import lang::sccfg::converter::util::Getters;
-import lang::sccfg::converter::util::DataFlowGraph;
 
 import refactoring::microrefactorings::GetInfo;
 import refactoring::rearranging_code::GenerateIds;
@@ -36,8 +35,8 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 		}
 	}
 	
-	<p, g> = createDFG(asts);
-	<pR,gR> = createDFG(refactoredAsts);
+	p = createDFG(asts);
+	pR = createDFG(refactoredAsts);
 		
 	if(checkInlineLocal(p,pR, local, replacementIds)){
 		println("Refactoring InlineLocal successful!");

@@ -12,7 +12,6 @@ import lang::java::m3::TypeSymbol;
 import lang::sccfg::ast::DataFlowLanguage;
 import lang::sccfg::converter::Java2DFG;
 import lang::sccfg::converter::util::Getters;
-import lang::sccfg::converter::util::DataFlowGraph;
 
 import refactoring::microrefactorings::GetInfo;
 import refactoring::rearranging_code::GenerateIds;
@@ -39,8 +38,8 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 		}
 	}
 	
-	<p, g> = createDFG(asts);
-	<pR,gR> = createDFG(refactoredAst);
+	p = createDFG(asts);
+	pR = createDFG(refactoredAst);
 		
 	if(checkConvertLocalToField(p,pR, local)){
 		println("Refactoring ConvertLocalToField successful!");
