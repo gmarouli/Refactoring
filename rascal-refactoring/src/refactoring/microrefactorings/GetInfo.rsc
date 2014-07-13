@@ -73,6 +73,10 @@ default bool isInfix(Expression e) = false;
 
 bool isLocalAssignment(Expression e:assignment(lhs,_,_), loc local)
 	= !isArrayAccess(lhs) && lhs@decl == local;
+bool isLocalAssignment(Expression e:postfix(operand, _), loc local)
+	= !isArrayAccess(operand) && operand@decl == local;
+bool isLocalAssignment(Expression e:prefix(_, operand), loc local)
+	= !isArrayAccess(operand) && operand@decl == local;
 default bool isLocalAssignment(Expression e, loc local)
 	= false;
 
