@@ -125,7 +125,7 @@ str prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
 	code += name +"(";
 	if(ps != []){
 		for(p <- ps){
-			code += prettyPrint(p);
+			code += prettyPrint(p, "");
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
@@ -151,7 +151,7 @@ str prettyPrint(Declaration s:constructor(name, ps, exs, body), ident){
 	code += name +"(";
 	if(ps != []){
 		for(p <- ps){
-			code += prettyPrint(p);
+			code += prettyPrint(p, "");
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
@@ -189,14 +189,11 @@ str prettyPrint(Declaration f:variables(t, frags), str ident){
 	return substring(code, 0, findLast(code, ","));
 }
 
-str prettyPrint(Declaration p:parameter(t, name, ext)){
-	code = prettyPrint(t);
-	code += " "+name;
-	return code;
-}
+str prettyPrint(Declaration p:parameter(t, name, ext), "")
+	= prettyPrint(t) + " "+name;
 
 default str prettyPrint(Declaration d, str ident){
-	println(d);
+	println("Unknown declaration: <d>");
 	return "";
 }
 
@@ -243,7 +240,7 @@ str prettyPrint(Expression m:methodCall(_, name, ps)){
 	code = name+"(";
 	if(ps != []){
 		for(p <- ps){
-			prettyPrint(p);
+			code += prettyPrint(p);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
@@ -265,6 +262,9 @@ str prettyPrint(Expression m:methodCall(_, rec, name, ps)){
 	return code;
 }
 
+str prettyPrint(Expression e:\null())
+	= "null";
+	
 str prettyPrint(Expression e:number(n))
 	= n;
 
@@ -318,7 +318,7 @@ str prettyPrint(Expression e:simpleName(name))
 	= name;
 
 default str prettyPrint(Expression s){
-	println(s);
+	println("Unknown expression: <s>");
 	return "";
 }
 	
@@ -379,6 +379,17 @@ str prettyPrint(Statement s:\return(), str ident)
 str prettyPrint(Statement s:synchronizedStatement(l, body), ident)
 	= ident + "synchronized(" +	prettyPrint(l) + ") " + trim(prettyPrint(body, ident)) + "\n";
 	
+str prettyPrint(Statement s:\try(body, catchClauses), ident){
+	code = ident + "try " + trim(prettyPrint(body, ident)) + "\n";
+	for(cs <- catchClauses){
+		code += prettyPrint(cs, ident);
+	}
+	return code;
+}
+	
+str prettyPrint(Statement s:\catch(p, body), ident)
+	= ident + "catch(" + prettyPrint(p, "") + ") " + trim(prettyPrint(body, ident)) + "\n";
+	
 str prettyPrint(Statement s:declarationStatement(e), str ident)
 	= ident + prettyPrint(e, ident) + ";\n";
 
@@ -389,7 +400,7 @@ str prettyPrint(Statement s:expressionStatement(e), str ident)
 	= ident + prettyPrint(e) + ";\n";
 	
 default str prettyPrint(Statement s, str ident){
-	println(s);
+	println("Unknown statement: <s>");
 	return "";
 }
 
@@ -431,6 +442,6 @@ str prettyPrint(Modifier m:\volatile())
 	= "volatile";	
 
 default str prettyPrint(Modifier m){
-	println(m);
+	println("Unknown modifier: <m>");
 	return "";
 }
