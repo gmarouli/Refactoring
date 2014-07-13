@@ -10,7 +10,7 @@ import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 
 import lang::sccfg::ast::DataFlowLanguage;
-import lang::sccfg::converter::Java2DFG;
+import lang::sccfg::converter::Java2SDFG;
 import lang::sccfg::converter::util::Getters;
 
 import refactoring::microrefactorings::GetInfo;
@@ -28,7 +28,7 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 				body = for(b <- body){
 					append(convertLocalToField(b, local, targetedMethodDecl, newFieldDecl, lockDecl));
 				}
-				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable(extractVariableNameFromDecl(lockDecl), 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()][@src = generateId(c@src)]),[])[@src = generateId(c@src)])[@decl = lockDecl][@src = generateId(c@src)]])[@modifiers = [Modifier::\private()]]]
+				body = [Declaration::field(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()]),[variable(extractVariableNameFromDecl(lockDecl), 0, newObject(simpleType(simpleName("Object")[@decl=|java+class:///java/lang/Object|][@typ=object()][@src = generateId(c@src)]),[])[@src = generateId(c@src)])[@decl = lockDecl][@src = generateId(c@src)]])[@modifiers = [Modifier::\private(), Modifier::\final()]]]
 					 + [newFieldDeclaration]
 				     + body;
 				insert class(name, exts, impls ,body)[@modifiers=c@modifiers][@src = c@src][@decl=c@decl][@typ=c@typ];
@@ -43,7 +43,6 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 		
 	if(checkConvertLocalToField(p,pR, local)){
 		println("Refactoring ConvertLocalToField successful!");
-		prettyPrint(refactoredAst,"");
 		return refactoredAst;
 	}
 	else{
@@ -68,6 +67,7 @@ Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc loc
 		<mb, newFieldDeclaration> = encloseInASynchronizedBlock(mb, local, newFieldDecl, locking);
 		if(!(Stmt::block(_) := mb))
 			mb = block([mb])[@src = mb@src];
+		println("Returning method");
 		return method(r, n, ps, exs, mb)[@src = m@src][@decl = m@decl][@typ = m@typ][@modifiers = m@modifiers];
 	}
 	else

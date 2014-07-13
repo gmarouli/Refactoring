@@ -87,8 +87,8 @@ tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Sta
 				bSrc.offset = init@src.offset;
 				bSrc.begin.line = init@src.begin.line;
 				bSrc.begin.column = init@src.begin.column;
-				accessed = true;
 			}
+			accessed = true;
 	  	}
 		else if(!accessed){
 		  	append(stmt);
@@ -96,13 +96,13 @@ tuple[list[Statement], Statement, list[Statement], Declaration] extractBlock(Sta
 		else{
 			<stmt, containsLocal> = convertLocalDeclToFieldDecl(stmt, local, fieldDecl); 
 			if(containsLocal){
-				contents += unknown + [stmt];
-				unknown = [];
 				if(bSrc.offset <= 0){
 					bSrc.offset = stmt@src.offset;
 					bSrc.begin.line = stmt@src.begin.line;
 					bSrc.begin.column = stmt@src.begin.column;
 				}
+				contents += unknown + [stmt];
+				unknown = [];
 				bSrc.length = stmt@src.offset + stmt@src.length - bSrc.offset;
 				bSrc.end.line = stmt@src.end.line;
 				bSrc.end.column = stmt@src.end.column;
@@ -167,5 +167,5 @@ Declaration createVariableDeclaration(Type t, Expression v:variable(name, d), lo
 
 Statement getAssignmentFromDeclaration(Expression v:variable(name, _, init), loc assignSrc, loc fieldDecl)
 	= expressionStatement(assignment(simpleName(name)[@decl = fieldDecl][@typ = v@typ][@src = v@src], "=", init)[@src = v@src][@typ = v@typ])[@src = assignSrc];
-default Expression getAssignmentFromDeclaration(Expression v, loc fieldDecl)
+default Statement getAssignmentFromDeclaration(Expression v, loc assignSrc, loc fieldDecl)
 	= Statement::empty();

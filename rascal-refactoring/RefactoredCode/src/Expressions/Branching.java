@@ -1,23 +1,33 @@
 package Expressions;
-public class Branching {
-	private Object generated_lock_for_x = new Object();
-	private int  x;
-	public void m(int  caller) 
-		{
-			synchronized(generated_lock_for_x)
-				{
-					x = 0;
-					for(int  i = 0; i < 100000; i++);					x++;
-					System.out.println(caller + "": I am exiting with x ="" + x);
-				}
+import java.io.IOException;
+public class Branching extends ExpressionGen {
+	int f;
+	ExpressionGen l;
+
+	public int add(Branching b, Branching c)  throws {
+		int i = 0;
+		int k = 0;
+		while(i == 3) {
+			if(k == 0) {
+				i = 5;
+				continue;
+			}
+			else if(k == 4) {
+				i = 6;
+				break;
+			}
+			else if(k == 9) {
+				i ++;
+			}
+			else {
+				return i ++;
+			}
 		}
-	public void m1() 
-		{
-			m(1);
-		}
-	public void m2() 
-		{
-			m(2);
-		}
+		return i;
+	}
+
+	public int sub()  throws {
+		return 0;
+	}
 
 }
