@@ -5,64 +5,50 @@ import String;
 import lang::java::jdt::m3::AST;
 
 loc targetFile = |project://rascal-refactoring/RefactoredCode|;
-str code = "";
 
-void prettyPrint(set[Declaration] asts, str ident){
+void prettyPrint(set[Declaration] asts){
 	for(a <- asts)
-		prettyPrint(a, ident);
+		prettyPrint(a, "");
 }
 
-void prettyPrint(list[Declaration] asts, str ident){
+str prettyPrint(list[Declaration] asts, str ident){
+	code = "";
 	for(a <- asts)
-		prettyPrint(a, ident);
+		code += prettyPrint(a, ident);
+	return code;
 }
 
+//Declarations
 void prettyPrint(Declaration c:compilationUnit(imps, typs), str ident){
 	targetFile = |project://rascal-refactoring/RefactoredCode|;
 	targetFile.path = targetFile.path + c@decl.path;
 	println("Creating file: <targetFile>");
-	prettyPrint(imps, "");
-	prettyPrint(typs, "");
+	code = prettyPrint(imps, "");
+	code += prettyPrint(typs, "");
 	writeFile(targetFile,code);
-	code = "";
 }
 
 void prettyPrint(Declaration c:compilationUnit(package, imps, typs), str ident){
 		targetFile = |project://rascal-refactoring/RefactoredCode|;
 		targetFile.path = targetFile.path + c@decl.path;
 		println("Creating file: <targetFile>");
-		code += "package ";
-		prettyPrint(package, "");
-		code += ";\n";
-		prettyPrint(imps, "");
-		prettyPrint(typs, "");
+		code = "package "+prettyPrint(package, "") + ";\n";
+		code += prettyPrint(imps, "");
+		code += prettyPrint(typs, "");
 		writeFile(targetFile,code);
-		code = "";
 }
 
-void prettyPrint(Declaration p:package(name), ident){
-	code += name;
-}
-		
-void prettyPrint(Declaration p:package(pp, name), ident){
-	prettyPrint(pp);
-	code += "."+name;
-}
-
-void prettyPrint(Declaration i:\import(name), str ident){
-	code += "import " + name + ";\n";
-}
-
-void prettyPrint(Declaration c:\class(name, exts, impls, body), str ident){
-	code += ident;
+str prettyPrint(Declaration c:\class(name, exts, impls, body), str ident){
+	code = ident;
 	for(m <- (c@modifiers ? [])){
-		prettyPrint(m);
+		code += prettyPrint(m);
+		code += " ";
 	}
 	code += "class " + name;
 	if(exts != []){
 		code += " extends ";
 		for(e <- exts){
-			prettyPrint(e);
+			code += prettyPrint(e);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
@@ -70,64 +56,49 @@ void prettyPrint(Declaration c:\class(name, exts, impls, body), str ident){
 	if(impls != []){
 		code += " implements ";
 		for(i <- impls){
-			prettyPrint(i);
+			code += prettyPrint(i);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
 	}
 	code += " {\n";
-	prettyPrint(body, ident + "\t");
+	code += prettyPrint(body, ident + "\t");
 	code += "\n}";
+	return code;
 }
 
-void prettyPrint(Declaration f:field(t, frags), str ident){
-	code += ident;
+str prettyPrint(Declaration f:field(t, frags), str ident){
+	code = ident;
 	for(m <- (f@modifiers ? [])){
-		prettyPrint(m);
+		code += prettyPrint(m);
+		code += " ";
 	}
-	prettyPrint(t);
+	code += prettyPrint(t);
 	code += " ";
 	for(fr <- frags){
-		prettyPrint(fr);
+		code += prettyPrint(fr);
 		code += ", ";
 	}
 	code = substring(code, 0, findLast(code, ",")) + ";\n";
+	return code;
 }
 
-void prettyPrint(Declaration f:variables(t, frags), str ident){
-	code += ident;
-	for(m <- (f@modifiers ? [])){
-		prettyPrint(m);
-	}
-	prettyPrint(t);
-	code += " ";
-	for(fr <- frags){
-		prettyPrint(fr);
-		code += ", ";
-	}
-	code = substring(code, 0, findLast(code, ",")) + ";\n";
+
+str prettyPrint(Declaration p:package(name), ident){
+	return name;
 }
 
-void prettyPrint(Declaration f:variables(t, frags), str ident){
-	prettyPrint(t);
-	code += " ";
-	for(fr <- frags){
-		prettyPrint(fr);
-		code += ", ";
-	}
-	code = substring(code, 0, findLast(code, ","));
-}
-
-void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
-	code += ident;
+str prettyPrint(Declaration m:method(t, name, ps, exs), ident){
+	code = "\n"+ident;
 	for(modi <- (m@modifiers ? [])){
-		prettyPrint(modi);
+		code += prettyPrint(modi);
+		code += " ";
 	}
-	prettyPrint(t);
+	code += prettyPrint(t);
 	code += name +"(";
 	if(ps != []){
 		for(p <- ps){
-			prettyPrint(p);
+			code += prettyPrint(p);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ",")) + ")";
@@ -140,19 +111,21 @@ void prettyPrint(Declaration m:method(t, name, ps, exs), ident){
 		}
 		code = substring(code, 0, findLast(code, ","));
 	}
-	code += ";";
+	return code + ";\n";
 }
 
-void prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
-	code += ident;
+str prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
+	code = "\n" + ident;
 	for(modi <- (m@modifiers ? [])){
-		prettyPrint(modi);
+		code += prettyPrint(modi);
+		code += " ";
 	}
-	prettyPrint(t);
+	code += prettyPrint(t);
+	code += " ";
 	code += name +"(";
 	if(ps != []){
 		for(p <- ps){
-			prettyPrint(p);
+			code += prettyPrint(p);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
@@ -166,276 +139,298 @@ void prettyPrint(Declaration m:method(t, name, ps, exs, body), str ident){
 		}
 		code = substring(code, 0, findLast(code, ","));
 	}
-	code += "\n";
-	prettyPrint(body, ident + "\t");
+	return code + trim(prettyPrint(body, ident))+"\n";
 }
 
-void prettyPrint(Declaration p:parameter(t, name, ext)){
-	prettyPrint(t);
-	code += " "+name;
-}
-
-default void prettyPrint(Declaration d, str ident){
-	println(d);
-}
-
-void prettyPrint(Type s:simpleType(exp)){
-	prettyPrint(exp);
-}
-
-void prettyPrint(Type i:\int()){
-	code += "int ";
-}
-
-void prettyPrint(Type i:\arrayType(t)){
-	prettyPrint(t);
-	code += "[] ";
-}
-
-void prettyPrint(Type i:\void()){
-	code += "void ";
-}
-
-void prettyPrint(Type i:\boolean()){
-	code += "boolean ";
-}
-
-void prettyPrint(Expression v:variable(name,_)){
-	code += name;
-}
-
-void prettyPrint(Expression v:this()){
-	code += "this";
-}
-
-void prettyPrint(Expression v:fieldAccess(_, exp, name)){
-	prettyPrint(exp);
-	code += "."+name;
-}
-
-void prettyPrint(Expression v:fieldAccess(_, name)){
-	code += name;
-}
-
-void prettyPrint(Expression v:\type(exp)){
-	prettyPrint(exp);
-	code += ".class";
-}
-
-
-void prettyPrint(Expression v:variable(name,_, init)){
-	code += name + " = ";
-	prettyPrint(init);
-}
-
-void prettyPrint(Expression e:simpleName(name)){
-	code += name;
-}
-
-void prettyPrint(Expression e:number(n)){
-	code += n;
-}
-
-void prettyPrint(Expression e:stringLiteral(s)){
-	code += "\""+s+"\"";
-}
-
-void prettyPrint(Expression e:booleanLiteral(b)){
-	if(b)
-		code += "true";
-	else
-		code += "false";
-}
-
-void prettyPrint(Expression e:infix(lhs,operator, rhs, exts)){
-	operator = " " + operator + " ";
-	prettyPrint(lhs);
-	code += operator;
-	prettyPrint(rhs);
-	for(ex <- exts){
-		code += operator;
-		prettyPrint(ex);
+str prettyPrint(Declaration s:constructor(name, ps, exs, body), ident){
+	code = "\n" + ident;
+	for(modi <- (s@modifiers ? [])){
+		code += prettyPrint(modi);
+		code += " ";
 	}
+	code += name +"(";
+	if(ps != []){
+		for(p <- ps){
+			code += prettyPrint(p);
+			code += ", ";
+		}
+		code = substring(code, 0, findLast(code, ","));
+	}
+	code += ") ";
+	if(exs != []){
+		code += " throws ";
+		for(e <- exs){
+			code += prettyPrint(e);
+			code += ", ";
+		}
+		code = substring(code, 0, findLast(code, ","));
+	}
+	return code + trim(prettyPrint(body, ident)) + "\n";
 }
 
-void prettyPrint(Expression e:prefix(operator, operand)){
-	code += operator;
-	prettyPrint(operand);
+str prettyPrint(Declaration i:\import(name), str ident)
+	= "import " + name + ";\n";
+	
+str prettyPrint(Declaration p:package(pp, name), ident)
+	= prettyPrint(pp) + "." + name;
+
+str prettyPrint(Declaration f:variables(t, frags), str ident){
+	code = "";
+	for(m <- (f@modifiers ? [])){
+		code += prettyPrint(m);
+		code += " ";
+	}
+	code += prettyPrint(t);
+	code += " ";
+	for(fr <- frags){
+		code += prettyPrint(fr);
+		code += ", ";
+	}
+	return substring(code, 0, findLast(code, ","));
 }
 
-void prettyPrint(Expression e:postfix(operand, operator)){
-	prettyPrint(operand);
-	code += operator;
+str prettyPrint(Declaration p:parameter(t, name, ext)){
+	code = prettyPrint(t);
+	code += " "+name;
+	return code;
 }
 
-void prettyPrint(Expression e:infix(operator, operand)){
-	code += operator;
-	prettyPrint(operand);
+default str prettyPrint(Declaration d, str ident){
+	println(d);
+	return "";
 }
 
-void prettyPrint(Expression e:assignment(lhs,operator, rhs)){
-	operator = " " + operator + " ";
-	prettyPrint(lhs);
-	code += operator;
-	prettyPrint(rhs);
+//Expression
+str prettyPrint(Expression s:arrayAccess(name, exp))
+	 = prettyPrint(name) + "[" + prettyPrint(exp) + "]";
+
+str prettyPrint(Expression s:newArray(t, ds)){
+	code = " new ";
+	code += prettyPrint(t);
+	code+="[";
+	for(d <-ds)
+		code += prettyPrint(d);
+	code+="]";
+	return code;
 }
 
-void prettyPrint(Expression m:methodCall(_, rec, name, ps)){
-	prettyPrint(rec);
+str prettyPrint(Expression e:assignment(lhs, operator, rhs))
+	= prettyPrint(lhs) + " " + operator + " " + prettyPrint(rhs);
+
+str prettyPrint(Expression e:newObject(name, args)){
+	code = "new " + prettyPrint(name) + "(";
+	if(args != []){
+		for(arg <- args){
+			code += prettyPrint(arg);
+			code += ", ";
+		}
+		code = substring(code, 0, findLast(code, ","));
+	}
+	return code + ")";
+}
+
+str prettyPrint(Expression q:qualifiedName(qName,name))
+	= prettyPrint(qName) + "." + prettyPrint(name);
+	
+
+str prettyPrint(Expression v:fieldAccess(_, name))
+	= name;
+	
+str prettyPrint(Expression v:fieldAccess(_, exp, name))
+	= prettyPrint(exp) + "." + name;
+
+str prettyPrint(Expression m:methodCall(_, name, ps)){
+	code = name+"(";
+	if(ps != []){
+		for(p <- ps){
+			prettyPrint(p);
+			code += ", ";
+		}
+		code = substring(code, 0, findLast(code, ","));
+	}
+	return code + ")";
+}
+
+str prettyPrint(Expression m:methodCall(_, rec, name, ps)){
+	code = prettyPrint(rec);
 	code += "."+name+"(";
 	if(ps != []){
 		for(p <- ps){
-			prettyPrint(p);
+			code += prettyPrint(p);
 			code += ", ";
 		}
 		code = substring(code, 0, findLast(code, ","));
 	}
 	code += ")";
+	return code;
 }
 
-void prettyPrint(Expression q:qualifiedName(qName,name)){
-	prettyPrint(qName);
-	code += ".";
-	prettyPrint(name);
+str prettyPrint(Expression e:number(n))
+	= n;
+
+str prettyPrint(Expression e:booleanLiteral(b)){
+	if(b)
+		return "true";
+	else
+		return "false";
 }
 
-void prettyPrint(Expression b:\bracket(exp)){
-	code += "(";
-	prettyPrint(exp);
-	code += ")";
+str prettyPrint(Expression e:stringLiteral(s))
+	= s;
+
+str prettyPrint(Expression v:\type(exp))
+	= prettyPrint(exp) + ".class";
+
+str prettyPrint(Expression v:variable(name,_))
+	= name;
+
+str prettyPrint(Expression v:variable(name,_, init))
+	= name + " = " + prettyPrint(init);
+	
+str prettyPrint(Expression b:\bracket(exp))
+	= "(" + prettyPrint(exp) + ")";
+
+str prettyPrint(Expression v:this())
+	= "this";
+
+str prettyPrint(Expression e:declarationExpression(exp))
+	= prettyPrint(exp,"");
+
+str prettyPrint(Expression e:infix(lhs,operator, rhs, exts)){
+	operator = " " + operator + " ";
+	code = prettyPrint(lhs);
+	code += operator;
+	code += prettyPrint(rhs);
+	for(ex <- exts){
+		code += operator;
+		code += prettyPrint(ex);
+	}
+	return code;
 }
 
-void prettyPrint(Statement s:empty(),_){
-code += ";";
+str prettyPrint(Expression e:prefix(operator, operand))
+	= operator + " " + prettyPrint(operand);
+
+str prettyPrint(Expression e:postfix(operand, operator))
+	= prettyPrint(operand) + " " + operator;
+
+str prettyPrint(Expression e:simpleName(name))
+	= name;
+
+default str prettyPrint(Expression s){
+	println(s);
+	return "";
+}
+	
+	
+//Statements
+str prettyPrint(Statement s:block(stmts), str ident) {
+	code = ident + "{\n";
+	for(stmt <- stmts)
+		code += prettyPrint(stmt, ident+"\t");
+	return code + ident + "}\n";
 }
 
-void prettyPrint(Statement s:\while(cond, stmt), str ident){
-	code += ident;
-	code += "while(";
-	prettyPrint(cond);
-	code += ")";
-	prettyPrint(stmt, ident + "\t");
-}
+str prettyPrint(Statement s:\break(""), str ident)
+	= ident + "break;\n";
 
-void prettyPrint(Statement s:\for(init, cond, update, body), str ident){
-	code += ident;
+str prettyPrint(Statement s:\continue(), str ident)
+	= ident + "continue;\n";
+	
+str prettyPrint(Statement s:empty(),_)
+	= ";\n";
+
+str prettyPrint(Statement s:\for(init, cond, update, body), str ident){
+	code = ident;
 	code += "for(";
 	if(init != []){
 		for(i <- init){
-			prettyPrint(i);
+			code += prettyPrint(i);
 			code += ",";
 		}
 		code = substring(code, 0, findLast(code, ","));
-		code = substring(code, 0, findLast(code, ";"));
 	}
 	code += "; ";
-	prettyPrint(cond);
+	code += prettyPrint(cond);
 	code += "; ";
 	if(update != []){
 		for(u <- update){
-			prettyPrint(u);
+			code += prettyPrint(u);
 			code += ",";
 		}
 		code = substring(code, 0, findLast(code, ","));
 	}
-	code += ")";
-	prettyPrint(body,"\t"+ident);		
+	code += ") ";
+	return code + trim(prettyPrint(body,ident)) + "\n";		
 }
 
-void prettyPrint(Expression e:declarationExpression(exp)){
-	prettyPrint(exp,"");
-}
+str prettyPrint(Statement s:\if(cond, b), str ident)
+	= ident + "if(" + prettyPrint(cond) + ") " + trim(prettyPrint(b, ident)) + "\n";
 
-default void prettyPrint(Statement s, str ident){
+str prettyPrint(Statement s:\if(cond, b, eb), str ident)
+	= ident + "if(" + prettyPrint(cond) + ") " + trim(prettyPrint(b, ident)) + "\n" + ident + "else " +trim(prettyPrint(eb, ident)) + "\n";
+
+str prettyPrint(Statement s:\return(exp), str ident)
+	= ident + "return " + prettyPrint(exp) + ";\n";
+	
+str prettyPrint(Statement s:\return(), str ident)
+	= ident + "return;\n";
+
+str prettyPrint(Statement s:synchronizedStatement(l, body), ident)
+	= ident + "synchronized(" +	prettyPrint(l) + ") " + trim(prettyPrint(body, ident)) + "\n";
+	
+str prettyPrint(Statement s:declarationStatement(e), str ident)
+	= ident + prettyPrint(e, ident) + ";\n";
+
+str prettyPrint(Statement s:\while(cond, stmt), str ident)
+	= ident + "while(" + prettyPrint(cond) + ") " + trim(prettyPrint(stmt, ident)) + "\n";	
+
+str prettyPrint(Statement s:expressionStatement(e), str ident)
+	= ident + prettyPrint(e) + ";\n";
+	
+default str prettyPrint(Statement s, str ident){
 	println(s);
+	return "";
 }
 
-void prettyPrint(Expression e:newObject(t,ps)){
-	code += "new ";
-	prettyPrint(t);
-	code += "(";
-	if(ps != []){
-		for(p <- ps){
-			prettyPrint(p);
-			code += ", ";
-		}
-		code = substring(code, 0, findLast(code, ",")) + ")";
-	}
-	code += ")";
-}
 
-void prettyPrint(Expression m:methodCall(_, name, ps)){
-	code += name+"(";
-	if(ps != []){
-		for(p <- ps){
-			prettyPrint(p);
-			code += ", ";
-		}
-		code = substring(code, 0, findLast(code, ","));
-	}
-	code += ")";
-}
+//Type
+str prettyPrint(Type i:\arrayType(t))
+	= prettyPrint(t) + "[] ";
+	
+str prettyPrint(Type s:simpleType(exp))
+	= prettyPrint(exp);
 
-default void prettyPrint(Expression s){
-	println(s);
-}
 
-void prettyPrint(Statement s:\if(cond, b), str ident){
-	code += ident;
-	code += "if(";
-	prettyPrint(cond);
-	code += ")\n ";
-	prettyPrint(b, ident);
-}
+str prettyPrint(Type i:\int())
+	= "int";
 
-void prettyPrint(Statement s:block(stmts), str ident){
-	code += ident;
-	code += "{\n";
-	for(stmt <- stmts)
-		prettyPrint(stmt, ident+"\t");
-	code += ident + "}\n";
-}
+str prettyPrint(Type i:\void())
+	= "void";
 
-void prettyPrint(Statement s:expressionStatement(e), str ident){
-		code += ident;
-		prettyPrint(e);
-		code += ";\n";
-}
+str prettyPrint(Type i:\boolean())
+	= "boolean";
 
-void prettyPrint(Statement s:declarationStatement(e), str ident){
-		code += ident;
-		prettyPrint(e, ident);
-		code += ";\n";
-}
+//Modifiers
+str prettyPrint(Modifier m:\private())
+	= "private";	
 
-void prettyPrint(Statement s:synchronizedStatement(l, body), ident){
-	code += ident;
-	code += "synchronized(";
-	prettyPrint(l);
-	code += ")\n";
-	prettyPrint(body, ident + "\t");
-}
+str prettyPrint(Modifier m:\final())
+	= "final";	
 
-void prettyPrint(Modifier m:\private()){
-	code += "private ";	
-}
+str prettyPrint(Modifier m:\synchronized())
+	= "synchronized";	
 
-void prettyPrint(Modifier m:\synchronized()){
-	code += "synchronized ";	
-}
+str prettyPrint(Modifier m:\public())
+	= "public";	
 
-void prettyPrint(Modifier m:\public()){
-	code += "public ";	
-}
+str prettyPrint(Modifier m:\static())
+	= "static";	
 
-void prettyPrint(Modifier m:\static()){
-	code += "static ";	
-}
+str prettyPrint(Modifier m:\volatile())
+	= "volatile";	
 
-void prettyPrint(Modifier m:\volatile()){
-	code += "volatile ";	
-}
-
-default void prettyPrint(Modifier m){
+default str prettyPrint(Modifier m){
 	println(m);
+	return "";
 }
