@@ -7,23 +7,27 @@ import String;
 import PrettyPrint;
 
 import lang::java::jdt::m3::AST;
+import lang::java::m3::TypeSymbol;
 
 import lang::sccfg::ast::DataFlowLanguage;
-import lang::sccfg::converter::Java2DFG;
+import lang::sccfg::converter::Java2SDFG;
 import lang::sccfg::converter::util::Getters;
 
 import refactoring::microrefactorings::GetInfo;
 import refactoring::rearranging_code::GenerateIds;
-//import refactoring::microrefactorings::MicroRefactorings;
 
 
 set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
+	
+	p = createDFG(asts);
+	synchronizedMethods = getSynchronizedMethods(p, getCallGraph(asts));
+	
 	map[loc, set[loc]] replacementIds = ();
 	refactoredAsts = visit(asts){
 		case m:method(r, n, ps, exs, b):{
 			if(m@decl == targetedMethodDecl){
-				<b, successful, _, _, vs, replacementIds> = inlineLocal(b, local, false, false, false, Expression::null(), {}, replacementIds);
+				<b, successful, _, _, vs, replacementIds> = inlineLocal(b, local, false, false, Expression::null(), {}, replacementIds, synchronizedMethods);
 				if(successful)
 					println("The refactoring InlineLocal of <local> finished successfully!");
 				if(containsFieldsOrMethods(vs))
@@ -35,12 +39,10 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 		}
 	}
 	
-	p = createDFG(asts);
 	pR = createDFG(refactoredAsts);
 		
 	if(checkInlineLocal(p,pR, local, replacementIds)){
 		println("Refactoring InlineLocal successful!");
-		prettyPrint(refactoredAsts,"");
 		return refactoredAsts;
 	}
 	else{
@@ -133,15 +135,12 @@ bool isAssign(Stmt e:assign(_,_,_))
 default bool isAssign(Stmt e)
 	= false;
 	
-tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLocal(Statement blockStmt, loc local, bool successful, bool inControlStatement, bool replaceOn, Expression exp, set[loc] replacementVariables, map[loc,set[loc]] replacementIds){
+tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLocal(Statement blockStmt, loc local, bool successful, bool replaceOn, Expression exp, set[loc] replacementVariables, map[loc,set[loc]] replacementIds, set[loc] synchronizedMethods){
 	nreplaceOn = replaceOn;
 	blockStmt = top-down-break visit(blockStmt){
 		case s:block(stmts):{
 			stmts = for(stmt <- stmts){
-				//if the variable is not found yet it does not matter if we are in a control flow environment
-				if(!nreplaceOn)
-					inControlStatement = false;
-				<stmt, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(stmt, local, successful, inControlStatement, nreplaceOn, exp, replacementVariables, replacementIds);
+				<stmt, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(stmt, local, successful, nreplaceOn, exp, replacementVariables, replacementIds, synchronizedMethods);
 				append(stmt);
 			}
 			nreplaceOn = replaceOn;
@@ -153,12 +152,14 @@ tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLoc
 					nreplaceOn = true;
 					successful = true;
 					exp = getInitFromVariable(f);
+					if(containsSynchronizedMethodCalls(exp, synchronizedMethods))
+						throw "Inlined expression contains synchronized method calls, <exp@src>";
 					
 					replacementVariables = collectVariables(exp, replacementVariables);
 					println("Local variable found at <f@src>!");
 				}
 				else{
-					<f, exp, replacementVariables, replacementIds> = inlineLocal(f, local, inControlStatement, exp, replacementVariables, replacementIds);
+					<f, exp, replacementVariables, replacementIds> = inlineLocal(f, local, exp, replacementVariables, replacementIds, synchronizedMethods);
 					append(f);
 				}
 			}
@@ -170,7 +171,7 @@ tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLoc
 		}
 		case s:expressionStatement(e):{
 			if(nreplaceOn){
-				<temp, exp, replacementVariables, replacementIds> = inlineLocal(e, local, inControlStatement, exp, replacementVariables, replacementIds);
+				<temp, exp, replacementVariables, replacementIds> = inlineLocal(e, local, exp, replacementVariables, replacementIds, synchronizedMethods);
 				if(isLocalAssignment(e, local))
 					insert Statement::empty();
 				else
@@ -179,100 +180,9 @@ tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLoc
 			else
 				fail;
 		}
-		case s:\if(cond, bIf, bElse):{
-			if(nreplaceOn)
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables, replacementIds);
-			<bIf, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(bIf, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			<bElse, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(bElse, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			insert \if(cond, bIf, bElse)[@src = s@src];
-		}
-		case s:\if(cond, b):{
-			if(nreplaceOn)
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables, replacementIds);
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			insert \if(cond, b)[@src = s@src];
-		}
-		case s:\while(cond, b):{
-			if(nreplaceOn)
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, true, exp, replacementVariables, replacementIds);
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			insert \while(cond, b)[@src = s@src];
-		}
-		case s:\do(b, cond):{
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			if(nreplaceOn)
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, true, exp, replacementVariables, replacementIds);
-			insert \do(b, cond)[@src = s@src];
-		}
-		case s:\foreach(p, col, b):{
-			if(nreplaceOn)
-				<col, exp, replacementVariables, replacementIds> = inlineLocal(col, local, true, exp, replacementVariables, replacementIds);
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			insert \foreach(p, col, b)[@src = s@src];
-		}
-		case s:\for(init, cond, updaters, b):{
-			if(nreplaceOn){
-				init = for(i <- init){
-					<i, exp, replacementVariables, replacementIds> = inlineLocal(i, local, true, exp, replacementVariables, replacementIds);
-					append(i);
-				}
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, true, exp, replacementVariables, replacementIds);
-			}
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			if(nreplaceOn){
-				updaters = for(u <- updaters){
-					<u, exp, replacementVariables, replacementIds> = inlineLocal(u, local, true, exp, replacementVariables, replacementIds);
-					append(u);
-				}
-			}
-			insert \for(init, cond, updaters, b)[@src = s@src];
-		}
-		case s:\for(init, updaters, b):{
-			if(nreplaceOn){
-				init = for(i <- init){
-					<i, exp, replacementVariables, replacementIds> = inlineLocal(i, local, true, exp, replacementVariables, replacementIds);
-					append(i);
-				}
-			}
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			if(nreplaceOn){
-				updaters = for(u <- updaters){
-					<u, exp, replacementVariables, replacementIds> = inlineLocal(u, local, true, exp, replacementVariables, replacementIds);
-					append(u);
-				}
-			}
-			insert \for(init, cond, updaters, b)[@src = s@src];
-		}
-		case s:\switch(cond, stmts):{
-			if(nreplaceOn){
-				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables, replacementIds);
-			}
-			stmts = for(stmt <- stmts){
-				<stmt, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-				append(stmt);
-			}
-			insert \switch(cond, stmts)[@src = s@src];
-		}
-		case s:\try(b, stmts):{
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			stmts = for(stmt <- stmts){
-				<stmt, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-				append(stmt);
-			}
-			insert \try(b, stmts)[@src = s@src];
-		}
-		case s:\try(b, stmts, fin):{
-			<b, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(b, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-			stmts = for(stmt <- stmts){
-				<stmt, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(stmt, local, successful, true, nreplaceOn, exp, replacementVariables, replacementIds);
-				append(stmt);
-			}
-			<fin, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(fin, local, successful, inControlStatement, nreplaceOn, exp, replacementVariables, replacementIds);
-			insert \try(b, stmts, fin)[@src = s@src];
-		}
 		case Expression e:{
 			if(nreplaceOn){
-				<e, exp, replacementVariables, replacementIds> = inlineLocal(e, local, true, exp, replacementVariables, replacementIds);
+				<e, exp, replacementVariables, replacementIds> = inlineLocal(e, local, exp, replacementVariables, replacementIds, synchronizedMethods);
 				insert e;
 			}
 			else
@@ -282,36 +192,18 @@ tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLoc
 	return <blockStmt, successful, nreplaceOn, exp, replacementVariables, replacementIds>;
 }
 
-tuple[Expression, Expression, set[loc], map[loc,set[loc]]] inlineLocal(Expression b, loc local, bool inControlStatement, Expression exp, set[loc] replacementVariables, map[loc, set[loc]] replacementIds){
+tuple[Expression, Expression, set[loc], map[loc,set[loc]]] inlineLocal(Expression b, loc local, Expression exp, set[loc] replacementVariables, map[loc, set[loc]] replacementIds, set[loc] synchronizedMethods){
 	b = top-down-break visit(b){
-		case e:infix(lhs, operator, rhs, exts):{
-			if((operator == "&&") || (operator == "||")){
-				<lhs, exp, replacementVariables, replacementIds> = inlineLocal(lhs, local, inControlStatement, exp, replacementVariables, replacementIds);
-				<rhs, exp, replacementVariables, replacementIds> = inlineLocal(lhs, local, true, exp, replacementVariables, replacementIds);
-				exts = for(ext <- exts){
-					<ext, exp, replacementVariables, replacementIds> = inlineLocal(ext, local, true, exp, replacementVariables, replacementIds);
-					append(ext);
-				}
-				insert infix(lhs, operator, rhs, exts)[@src = e@src][@typ = e@typ];
-			}
-			else
-				fail;
-		}
 		case e:conditional(cond, ifE, elseE):{
-			<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, inControlStatement, exp, replacementVariables, replacementIds);
-			<ifE, exp, replacementVariables, replacementIds> = inlineLocal(ifE, local, true, exp, replacementVariables, replacementIds);
-			<elseE, exp, replacementVariables, replacementIds> = inlineLocal(elseE, local, true, exp, replacementVariables, replacementIds);
+			<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+			<ifE, exp, replacementVariables, replacementIds> = inlineLocal(ifE, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+			<elseE, exp, replacementVariables, replacementIds> = inlineLocal(elseE, local, exp, replacementVariables, replacementIds, synchronizedMethods);
 			insert conditional(cond, ifE, elseE)[@src = e@src][@typ = e@typ];
 		}
 		case e:postfix(operand, operator):{
 			if(operand@decl == local && ((operator == "++") || (operator == "--"))){
-				if(inControlStatement){
-					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
-				}
-				else{
-					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ][@src = e@src];
-					insert(exp);
-				}
+				exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ][@src = e@src];
+				insert(exp);
 			}
 			else{
 				fail;
@@ -319,39 +211,31 @@ tuple[Expression, Expression, set[loc], map[loc,set[loc]]] inlineLocal(Expressio
 		}
 		case e:prefix(operator, operand):{
 			if(operand@decl == local && ((operator == "++") || (operator == "--"))){
-				if(inControlStatement){
-					throw "Failed refactoring: Assignment to the local variable in control statement.";
-				}
-				else{
-					exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ][@src = e@src];
-					insert(exp);
-				}
+				exp = infix(exp, substring(operator, 1), number("1")[@typ = TypeSymbol::\int()], [])[@typ = exp@typ][@src = e@src];
+				insert(exp);
 			}
 			else{
 				fail;
 			}
 		}
 		case e: assignment(lhs, operator, rhs):{
-			<temp, exp, replacementVariables, replacementIds> = inlineLocal(rhs, local, inControlStatement, exp, replacementVariables, replacementIds);
-			if(lhs@decl == local){
-				if (inControlStatement){
-					throw "Failed refactoring: Assignment to the local variable in control statement. <e@src>";
+			<temp, exp, replacementVariables, replacementIds> = inlineLocal(rhs, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+			if(!isArrayAccess(lhs) && lhs@decl == local){
+				if(containsSynchronizedMethodCalls(temp, synchronizedMethods)){
+					throw "Inlined expression contains synchronized method calls <rhs@src>";
 				}
-				
 				replacementVariables = collectVariables(temp, replacementVariables);
 				if(operator == "="){
 					exp = temp;
 					insert(temp);
 				}
-				if(operator == "+="){
-					exp = infix(exp, "+", temp, [])[@typ = e@typ][@src = e@src];
-					insert(exp);
-				}
-				if(operator == "-="){
-					exp = infix(exp, "-", temp, [])[@typ = e@typ][@src = e@src];
+				else{
+					exp = infix(exp, substring(operator,0,1), temp, [])[@typ = e@typ][@src = e@src];
 					insert(exp);
 				}					
 			}
+			else
+				fail;
 		}
 		case e:simpleName(_):{
 			if(e@decl == local){
@@ -383,4 +267,18 @@ map[loc, set[loc]] mapOriginalIdsWithInlined(temp, map[loc, set[loc]] replacemen
 		}
 	}
 	return replacementIds;
+}
+
+bool containsSynchronizedMethodCalls(Expression exp, set[loc] synchronizedMethods){
+	visit(exp){
+		case c:methodCall(_, _, _):{
+			if(c@decl in synchronizedMethods)
+				return true;
+		}
+		case c:methodCall(_,_, _, _):{
+			if(c@decl in synchronizedMethods)
+				return true;
+		}
+	}
+	return false;
 }
