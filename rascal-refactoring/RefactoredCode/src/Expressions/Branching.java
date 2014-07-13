@@ -27,6 +27,15 @@ public class Branching extends ExpressionGen {
 	}
 
 	public int sub()  throws {
+		try {
+			BooleanSieve b = new BooleanSieve(3);
+			b.mark(2);
+			add(null, null);
+		}
+		catch(IOException e) {
+			e.printStackTrace();
+		}
+		BooleanSieve.print(new BooleanSieve(3));
 		return 0;
 	}
 

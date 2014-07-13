@@ -1,5 +1,6 @@
 module refactoring::microrefactorings::GetInfo
 
+import lang::sccfg::ast::DataFlowLanguage;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import String;
@@ -9,6 +10,42 @@ import IO;
 anno loc Declaration @ origDecl;
 public set[loc] convertedToPublic = {};
 
+bool isArrayAccess(Expression a:arrayAccess(_,_)) = true;
+default bool isArrayAccess(Expression lhs) = false;
+
+public set[loc] getSynchronizedMethods(Program p, rel[loc,loc] callGraph){
+	set[loc] synchronizedMethods = {d | acquireLock(_, _, dep) <- p.statements, exitPoint(id, d) <- p.statements, dep == id}
+						+ {d | releaseLock(_, _, dep) <- p.statements, entryPoint(id, d) <- p.statements, dep == id};
+	iprintln(callGraph);
+	newSynchronizedMethods = synchronizedMethods;
+	do{
+		synchronizedMethods = newSynchronizedMethods;
+		newSynchronizedMethods = synchronizedMethods + {decl | <decl, syncDecl> <- callGraph, (syncDecl in synchronizedMethods)};
+	}while(synchronizedMethods != newSynchronizedMethods);
+	return synchronizedMethods;
+}
+
+rel[loc,loc] getCallGraph(set[Declaration] asts){
+	rel[loc,loc] invocation = {};
+	visit(asts){
+		case m:method(_,_,_,_,body):{
+			invocation += getMethodCalls(body, m@decl, invocation);
+		}
+	}
+	return invocation;
+}
+
+rel[loc, loc] getMethodCalls(Statement body, loc m, rel[loc, loc] invocation){
+	visit(body){
+		case c:methodCall(_, _, _):{
+			invocation += {<m,c@decl>};
+		}
+		case c:methodCall(_,_, _, _):{
+			invocation += {<m,c@decl>};
+		}
+	}
+	return invocation;
+}
 
 bool isTargetMethod(Declaration d, loc targetMethod){
 	if(isMethod(d))
@@ -35,7 +72,11 @@ bool isInfix(Expression e:infix(_,_,_,_)) = true;
 default bool isInfix(Expression e) = false;
 
 bool isLocalAssignment(Expression e:assignment(lhs,_,_), loc local)
-	= lhs@decl == local;
+	= !isArrayAccess(lhs) && lhs@decl == local;
+bool isLocalAssignment(Expression e:postfix(operand, _), loc local)
+	= !isArrayAccess(operand) && operand@decl == local;
+bool isLocalAssignment(Expression e:prefix(_, operand), loc local)
+	= !isArrayAccess(operand) && operand@decl == local;
 default bool isLocalAssignment(Expression e, loc local)
 	= false;
 
