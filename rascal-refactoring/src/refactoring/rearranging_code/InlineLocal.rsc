@@ -169,6 +169,25 @@ tuple[Statement, bool, bool, Expression, set[loc], map[loc, set[loc]]] inlineLoc
 				insert declarationStatement(variables(t, frags))[@src = s@src];
 			}
 		}
+		case s:\for(init, cond, updaters, body):{
+			if(nreplaceOn){
+				init = for(i <- init){
+					<temp, exp, replacementVariables, replacementIds> = inlineLocal(i, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+					if(!isLocalAssignment(i, local))
+						append(temp);
+				}
+				<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+			}
+			<body, successful, nreplaceOn, exp, replacementVariables, replacementIds> = inlineLocal(body, local, successful, nreplaceOn, exp, replacementVariables, replacementIds, synchronizedMethods);
+			if(nreplaceOn){
+				updaters = for(u <- updaters){
+					<temp, exp, replacementVariables, replacementIds> = inlineLocal(u, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+					if(!isLocalAssignment(u, local))
+						append(temp);
+				}
+			}
+			insert \for(init, cond, updaters, body)[@src = s@src];
+		}
 		case s:expressionStatement(e):{
 			if(nreplaceOn){
 				<temp, exp, replacementVariables, replacementIds> = inlineLocal(e, local, exp, replacementVariables, replacementIds, synchronizedMethods);
