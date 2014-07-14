@@ -387,6 +387,9 @@ str prettyPrint(Statement s:\try(body, catchClauses), ident){
 	return code;
 }
 
+str prettyPrint(Statement s:\throw(exp), str ident)
+	= ident + "throw " + prettyPrint(exp) + ";\n";
+
 str prettyPrint(Statement s:\try(body, catchClauses, fin), ident){
 	code = ident + "try " + trim(prettyPrint(body, ident)) + "\n";
 	for(cs <- catchClauses){
