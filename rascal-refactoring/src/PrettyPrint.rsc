@@ -386,6 +386,15 @@ str prettyPrint(Statement s:\try(body, catchClauses), ident){
 	}
 	return code;
 }
+
+str prettyPrint(Statement s:\try(body, catchClauses, fin), ident){
+	code = ident + "try " + trim(prettyPrint(body, ident)) + "\n";
+	for(cs <- catchClauses){
+		code += prettyPrint(cs, ident);
+	}
+	code += ident + "finally " + trim(prettyPrint(fin, ident)) + "\n";
+	return code;
+}
 	
 str prettyPrint(Statement s:\catch(p, body), ident)
 	= ident + "catch(" + prettyPrint(p, "") + ") " + trim(prettyPrint(body, ident)) + "\n";
