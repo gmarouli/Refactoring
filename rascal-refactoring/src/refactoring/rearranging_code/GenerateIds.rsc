@@ -7,8 +7,8 @@ int offset = 0;
 
 anno loc Expression @ oldSrc;
 
-Expression addGeneratedId(Expression exp){
-	return top-down-break visit(exp){
+Expression addGeneratedId(Expression inlinedExp){
+	return top-down-break visit(inlinedExp){
 		case e:arrayAccess(Expression array, Expression index) =>
 			arrayAccess(addGeneratedId(array), addGeneratedId(index))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
 		case e:\newArray(t, ds, init) =>
@@ -33,10 +33,9 @@ Expression addGeneratedId(Expression exp){
 		case e:methodCall(isSuper, receiver, name, arguments) =>
 			methodCall(isSuper, addGeneratedId(receiver), name, [addGeneratedId(arg) | arg <- arguments])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
 		case e:\bracket(exp) => \bracket(addGeneratedId(exp))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-		case e:infix(lhs, op, rhs) => infix(addGeneratedId(lhs), op, addGeneratedId(rhs))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:infix(lhs, op, rhs, exts) => infix(addGeneratedId(lhs), op, addGeneratedId(rhs), [addGeneratedId(ext) | ext <- exts])[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
   		case e:\postfix(operand, operator) => postfix(addGeneratedId(operand), operator)[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
    		case e:\prefix(operator, operand) => prefix(operator, addGeneratedId(operand))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-
 		case Expression e => e[@oldSrc = e@src][@src = generateId(e@src)]
 	}
 }
