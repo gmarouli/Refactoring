@@ -9,12 +9,15 @@ anno loc Expression @ oldSrc;
 
 Expression addGeneratedId(Expression exp){
 	return top-down-break visit(exp){
-		case e:simpleName(_) => e[@src = generateId(e@src)][@oldSrc = e@src]
-		case e:super() => e[@src = generateId(e@src)][@oldSrc = e@src]
-		case e:this() => e[@src = generateId(e@src)][@oldSrc = e@src]
-		case e:methodCall(isSuper, name, arguments) => methodCall(isSuper, name, [addGeneratedId(arg) | arg <- arguments])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-		case e:e:methodCall(isSuper, receiver, name, arguments) =>
-			methodCall(isSuper, addGeneratedId(receiver), name, [addGeneratedId(arg) | arg <- arguments])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:arrayAccess(Expression array, Expression index) =>
+			arrayAccess(addGeneratedId(array), addGeneratedId(index))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\newArray(t, ds, init) =>
+    		\newArray(t, [addGeneratedId(d) | d <- ds], addGeneratedId(init))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:newArray(Type \type, list[Expression] dimensions) =>
+			\newArray(t, [addGeneratedId(d) | d <- ds])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\arrayInitializer(init) => \arrayInitializer([addGeneratedId(i) | i <- init])[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\assignment(lhs, op, rhs) => assignment(addGeneratedId(lhs), op, addGeneratedId(rhs))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\cast(t,exp) => \cast(t,addGeneratedId(exp))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
 		case e:\newObject(expr, t, args, c) =>
 			\newObject(addGeneratedId(expr), t, [addGeneratedId(arg) | arg <-args], c)[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
     	case e:\newObject(expr, t, args) =>
@@ -23,18 +26,18 @@ Expression addGeneratedId(Expression exp){
     		\newObject(t, [addGeneratedId(arg) | arg <-args], c)[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
     	case e:\newObject(t, args) =>
     		\newObject(t, [addGeneratedId(arg) | arg <-args])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-    	case e:\newArray(t, ds, init) =>
-    		\newArray(t, [addGeneratedId(d) | d <- ds], addGeneratedId(init))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-		case e:newArray(Type \type, list[Expression] dimensions) =>
-			\newArray(t, [addGeneratedId(d) | d <- ds])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-		case e:arrayAccess(Expression array, Expression index) =>
-			arrayAccess(addGeneratedId(array), addGeneratedId(index))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-		case e:qualifiedName(q, exp) => qualifiedName(addGeneratedId(q), addGeneratedId(exp))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-    	case e:\fieldAccess(isSuper, addGeneratedId(exp), name) => \fieldAccess(isSuper, exp, name)[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-   		case e:\fieldAccess(_, _) => e[@src = generateId(e@src)][@oldSrc = e@src]
-   		case e:\assignment(lhs, op, rhs) => assignment(addGeneratedId(lhs), op, addGeneratedId(rhs))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
-   		case e:\postfix(operand, operator) => postfix(addGeneratedId(operand), operator)[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+    	case e:qualifiedName(q, exp) => qualifiedName(addGeneratedId(q), addGeneratedId(exp))[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:conditional(cond, ifE, elseE) => conditions(addGeneratedId(cond),addGeneratedId(ifE),addGeneratedId(elseE))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\fieldAccess(isSuper, addGeneratedId(exp), name) => \fieldAccess(isSuper, exp, name)[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:methodCall(isSuper, name, arguments) => methodCall(isSuper, name, [addGeneratedId(arg) | arg <- arguments])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:methodCall(isSuper, receiver, name, arguments) =>
+			methodCall(isSuper, addGeneratedId(receiver), name, [addGeneratedId(arg) | arg <- arguments])[@decl = e@decl][@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:\bracket(exp) => \bracket(addGeneratedId(exp))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+		case e:infix(lhs, op, rhs) => infix(addGeneratedId(lhs), op, addGeneratedId(rhs))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+  		case e:\postfix(operand, operator) => postfix(addGeneratedId(operand), operator)[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
    		case e:\prefix(operator, operand) => prefix(operator, addGeneratedId(operand))[@typ = e@typ][@src = generateId(e@src)][@oldSrc = e@src]
+
+		case Expression e => e[@oldSrc = e@src][@src = generateId(e@src)]
 	}
 }
 
