@@ -186,7 +186,7 @@ Expression createQualifiedName(loc decl){
 }
 
 Expression createQualifiedName(list[str] s:[x], loc scheme){
-	return simpleName(x)[@decl = (scheme + x)];
+	return simpleName(x)[@decl = (scheme + x)][@typ = class(scheme + x,[])];
 }
 
 Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
@@ -194,7 +194,7 @@ Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
 	for(p <- xs){
 		path = p + "/" + path;
 	}
-	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path])[@decl = scheme + path];
+	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path][@typ = class(scheme + path,[])])[@decl = scheme + path][@typ = class(scheme + path,[])];
 }
 
 bool isMethod(Declaration::method(_,_,_,_,_)) = true;

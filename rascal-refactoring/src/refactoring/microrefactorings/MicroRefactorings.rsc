@@ -1,9 +1,11 @@
 module refactoring::microrefactorings::MicroRefactorings
 
 import refactoring::microrefactorings::GetInfo;
+import lang::sccfg::ast::DataFlowLanguage;
 import lang::java::jdt::m3::AST;
 import IO;
 import List;
+import lang::sccfg::converter::Java2SDFG;
 
 Declaration addMethod(Declaration targetClass:class(name, ext, impl, body), Declaration target){
 	return class(name, ext, impl, body+[target])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];	
@@ -43,6 +45,7 @@ bool isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc 
 			return true;
 		}
 	}
+	return false;
 }
 default bool isDeclarationOf(Statement s, loc local)
 	= false;
