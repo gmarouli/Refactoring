@@ -3,10 +3,14 @@ module refactoring::moving_methods::MoveMethod
 import IO;
 import List;
 import String;
+
+import lang::sccfg::ast::DataFlowLanguage;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import refactoring::microrefactorings::GetInfo;
 import refactoring::microrefactorings::MicroRefactorings;
+import lang::sccfg::converter::Java2SDFG;
+import refactoring::rearranging_code::GenerateIds;
 
 data MethodCase = \static(loc decl, Expression receiver)
 			| inParameters(loc decl, int index)
@@ -39,7 +43,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 				fail;
 		}
 	}
-	return visit(asts){
+	refactoredAsts = visit(asts){
 		case m:methodCall(_, _, _, _):{
 			if(m@decl == methodDecl)
 				insert adaptMethodCall(methodConfig, m);
@@ -53,6 +57,22 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 				fail;
 		} 
 	}
+	
+	p = createDFG(asts);
+	pR = createDFG(refactoredAsts);
+		
+	if(checkMoveMethod(p,pR, methodConfig)){
+		println("Refactoring Move Method successful!");
+		return refactoredAsts;
+	}
+	else{
+		println("Refactoring failed!");
+		return asts;
+	}
+}
+
+bool checkMoveMethod(Program p, Program pR, MethodCase m){
+	return true;
 }
 
 //Configure refactoring
@@ -60,8 +80,8 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 	//find the configuration if the method is static
 	if(static() in (m@modifiers ? {})){
 		println("The method is static! Move on ;)");
-		transferable = true;
-		receiver = createQualifiedName(to@decl);
+		receiver = addGeneratedId(createQualifiedName(to@decl), m@src);
+		iprintln(receiver);
 		newDecl = getNewMethodDeclaration(from@decl, to@decl, m, true, false);	
 		return MethodCase::\static(newDecl, receiver);
 	}
@@ -106,15 +126,15 @@ Declaration adaptMethodsCode(MethodCase s:\static(decl, receiver), Declaration m
 			}
 		}
 	}
-	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
+	return method(r, name, ps, exs, body)[@decl = decl][@src = m@src][@typ = m@typ][@modifiers = m@modifiers];
 }
 
 Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, name, args)){
-	return methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+	return methodCall(isSuper, addGeneratedId(receiver), name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, rec, name, args)){
-	return methodCall(isSuper, receiver, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+	return methodCall(isSuper, addGeneratedId(receiver), name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 //Method with the destination class as a parameter
@@ -211,7 +231,7 @@ Declaration adaptMethodsCode(MethodCase s:inFields(decl, fieldExp, param), Decla
 	
 	newParam = simpleName(extractVariableNameFromDecl(param@decl))[@decl = param@decl][@typ = class(from,[])];	
 	body = adaptCallsAndFields(body, decl, m@decl, from, fieldExp, newParam);
-	return method(r, name, ps + [param[@decl = m@decl]], exs, body)[@decl = decl][@modifiers = m@modifiers];
+	return method(r, name, ps + [param[@decl = m@decl][@src = generateId(m@src)]], exs, body)[@decl = decl][@modifiers = m@modifiers];
 }
 
 Expression adaptMethodCall(MethodCase s:inFields(decl, fieldExp, param), Expression m:methodCall(isSuper, name, list[Expression] args)){
@@ -239,7 +259,7 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 		}
 		case e:simpleName(name):{
 			if(isFieldOf(e, from)){
-				insert qualifiedName(newParam, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
+				insert qualifiedName(newParam, e)[@src = generateId(e@src)][@decl = e@decl][@typ = e@typ];
 			}
 		}
 		case m:methodCall(isSuper, name, list[Expression] args):{
@@ -250,7 +270,7 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 				}
 				args += [newParam];
 				//careful not nice src
-				insert methodCall(isSuper, qualifiedName(newParam[@src = m@src], fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+				insert methodCall(isSuper, qualifiedName(newParam[@src = generateId(m@src)], fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
 			}
 			else 
 				fail;
@@ -263,7 +283,7 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 				}
 				args += [rec];
 				//careful not nice src
-				insert methodCall(isSuper, qualifiedName(rec, fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+				insert methodCall(isSuper, qualifiedName(rec, fieldExp[@src = generateId(m@src)]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
 			}
 			else
 				fail;
@@ -272,7 +292,7 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 }
 
 Expression accessThroughVariable(Expression s:simpleName(_), Expression newParam)
-	= qualifiedName(newParam[@src = s@src], s)[@src = s@src][@src = s@src][@typ = s@typ]; 
+	= qualifiedName(newParam[@src = generateId(s@src)], s)[@src = s@src][@src = s@src][@typ = s@typ]; 
 Expression accessThroughVariable(Expression q:qualifiedName(exp,f), Expression newParam)
 	= qualifiedName(accessThroughVariable(exp,newParam), f)[@src = q@src][@decl = q@decl][@typ = q@typ]; 
 	
