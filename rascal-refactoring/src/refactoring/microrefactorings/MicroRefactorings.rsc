@@ -6,6 +6,8 @@ import lang::java::jdt::m3::AST;
 import IO;
 import List;
 import lang::sccfg::converter::Java2SDFG;
+import lang::java::m3::TypeSymbol;
+import refactoring::rearranging_code::GenerateIds;
 
 Declaration addMethod(Declaration targetClass:class(name, ext, impl, body), Declaration target){
 	return class(name, ext, impl, body+[target])[@modifiers = targetClass@modifiers][@src = targetClass@src][@decl = targetClass@decl][@typ = targetClass@typ];	
@@ -38,6 +40,64 @@ Declaration sugarSynchronizedMethod(Declaration m:method(r, n, p, exc, impl)){
 		}	
 	}
 }
+
+set[Declaration] desugarAccessToFields(set[Declaration] asts, loc methodDecl){
+	return top-down-break visit(asts){
+		case m:method(r, n, ps, exs, impl):{
+			if(m@decl == methodDecl){
+				if(Modifier::static() in (m@modifiers ? [])){
+					impl = desugarQualifiedName(impl,|java+class:///| + getClassDeclFromMethod(m@decl));
+				}
+				else{
+					impl = desugarThis(impl);
+				}
+				insert Declaration::method(r, n, ps, exs, impl)[@decl = m@decl][@typ = m@typ][@src = m@src][@modifiers = m@modifiers];
+			}
+		}
+	}
+}
+
+Statement desugarQualifiedName(Statement impl, loc from){
+	return top-down-break visit(impl){
+		case q:qualifiedName(exp, _):{
+			if(isField(q))
+				insert desugarQualifiedName(q, from);
+		}
+		case s:simpleName(_):{
+			if(isField(s))
+				insert desugarQualifiedName(s, from);
+		}
+		case m:methodCall(isS, name, args) =>
+			methodCall(isS, simpleName(substring(from.path,findLast(from.path,"/")))[@decl = from][@src = generateId(s@src)][@typ = createType(from)], name ,args)[@decl = m@decl][@typ = m@typ][@src = m@src]
+	}
+}
+
+Expression desugarQualifiedName(Expression q:qualifiedName(exp, s), loc from)
+	= qualifiedName(desugarQualifiedName(exp, from), s)[@decl = q@decl][@typ = q@typ][@src = q@src];
+Expression desugarQualifiedName(Expression s:simpleName(_), loc from)
+	= qualifiedName(simpleName(substring(from.path,findLast(from.path,"/")))[@decl = from][@src = generateId(s@src)][@typ = createType(from)], s)[@decl = s@decl][@typ = s@typ][@src = s@src];
+	
+Statement desugarThis(Statement impl){
+	return top-down-break visit(impl){
+		case q:qualifiedName(exp, _):{
+			if(isField(q))
+				insert desugarThis(q);
+		}
+		case s:simpleName(_):{
+			if(isField(s))
+				insert desugarThis(s);
+		}
+		case m:methodCall(isS, name, args) =>
+			methodCall(isS, \this()[@typ = class(getClassDeclFromMethod(s@decl),[])][@decl = getClassDeclFromMethod(s@decl)], name ,args)[@decl = m@decl][@typ = m@typ][@src = m@src]
+	}
+}
+
+
+Expression desugarThis(Expression s:simpleName(name))
+	= fieldAccess(false, \this()[@typ = class(|java+class:///|+extractClassName(s@decl),[])][@decl = |java+class:///|+extractClassName(s@decl)][@src = generateId(s@src)],name)[@src = s@src][@decl = s@decl][@typ = s@typ];
+Expression desugarThis(Expression q:qualifiedName(exp, s:simpleName(name)))
+	= fieldAccess(false, desugarThis(exp), name)[@src = s@src][@decl = s@decl][@typ = s@typ];
+
 
 bool isDeclarationOf(Statement s:declarationStatement(variables(_, frags)), loc local){
 	for(f <- frags){

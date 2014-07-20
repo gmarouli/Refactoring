@@ -107,13 +107,24 @@ str extractVariableNameFromDecl(loc variable)
 Expression determineLock(Declaration method){
 	loc classDecl = getClassDeclFromMethod(method@decl);
 	if(static() in (method@modifiers ? {})){
-		Expression l = createQualifiedName(classDecl); 
+		Expression l = createQualifiedClass(classDecl, method@src);
 		return Expression::\type(simpleType(l))[@src = method@src]
-											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [TypeSymbol::class(classDecl,[])])];
+											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [l@typ])];
 	}
 	else{
 		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(|java+class:///|+className,[])];
 	}
+}
+
+Expression createQualifiedClass(loc decl, loc src)
+	= simpleName(substring(decl.path,findLast(decl.path,"/")))[@decl = decl][@src = src][@typ = createType(decl)];
+	
+TypeSymbol createType(loc decl){
+	if(decl.scheme == "java+class")
+		return class(decl,[]);
+	else if(decl.scheme == "java+interface")
+		return symbol(decl,[]);
+	assert "Unknown type <decl.scheme>";
 }
 
 Statement encloseInSynchronized(Declaration method:method(_,_,_,_,impl))
@@ -171,31 +182,18 @@ default bool isFieldOf(Expression exp, c){
 	assert false : "What am I? <exp>";
 }
 
+bool isField(Expression f:simpleName(_)) = (f@decl.scheme == "java+field");
+bool isField(Expression q:qualifiedName(exp, _)) = isField(exp);
+default bool isField(Expression exp){
+	assert false : "What am I? <exp>";
+}
+
 loc getFirstAccessDecl(Expression f:simpleName(name)) 
 	= f@decl;
 loc getFirstAccessDecl(Expression q:qualifiedName(exp, _))
 	= getFirstAccessDecl(exp);
 Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();
 Expression getInitFromVariable(Expression v:variable(_,_, init)) = init;
-
-Expression createQualifiedName(loc decl){
-	parts = split("/", decl.path);
-	parts = [p | p <- parts, p != ""];
-	parts = reverse(parts);
-	return createQualifiedName(parts, |java+class:///|);
-}
-
-Expression createQualifiedName(list[str] s:[x], loc scheme){
-	return simpleName(x)[@decl = (scheme + x)][@typ = class(scheme + x,[])];
-}
-
-Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
-	path = x;
-	for(p <- xs){
-		path = p + "/" + path;
-	}
-	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path][@typ = class(scheme + path,[])])[@decl = scheme + path][@typ = class(scheme + path,[])];
-}
 
 bool isMethod(Declaration::method(_,_,_,_,_)) = true;
 bool isMethod(Declaration::method(_,_,_,_)) = true;

@@ -2,6 +2,7 @@ module refactoring::moving_methods::MoveMethod
 
 import IO;
 import List;
+import Set;
 import String;
 
 import lang::sccfg::ast::DataFlowLanguage;
@@ -18,6 +19,8 @@ data MethodCase = \static(loc decl, Expression receiver)
 			| notTransferable(); 
 
 set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinationClassDecl){
+	asts = desugarAccessToFields(asts, |java+class:///|+extractClassName(methodDecl));
+
 	Declaration targetMethod = getMethodFromDecl(asts, methodDecl);
 	Declaration sourceClass = getClassFromDecl(asts, |java+class:///|+extractClassName(targetMethod@decl));
 	Declaration destinationClass = getClassFromDecl(asts, destinationClassDecl);
@@ -32,7 +35,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	targetMethod = desugarSynchronizedMethod(targetMethod);
 	targetMethod = adaptMethodsCode(methodConfig, targetMethod);
 	
-	asts = top-down-break visit(asts){
+	refactoredAsts = top-down-break visit(asts){
 		case c:class(name, exts, impls, body):{
 			if(c@decl == sourceClass@decl){
 				insert removeMethod(c, methodDecl);
@@ -43,7 +46,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 				fail;
 		}
 	}
-	refactoredAsts = visit(asts){
+	refactoredAsts = visit(refactoredAsts){
 		case m:methodCall(_, _, _, _):{
 			if(m@decl == methodDecl)
 				insert adaptMethodCall(methodConfig, m);
@@ -61,7 +64,7 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	p = createDFG(asts);
 	pR = createDFG(refactoredAsts);
 		
-	if(checkMoveMethod(p,pR, methodConfig)){
+	if(checkMoveMethod(p,pR, methodDecl, sourceClass@decl, destinationClassDecl, methodConfig)){
 		println("Refactoring Move Method successful!");
 		return refactoredAsts;
 	}
@@ -71,8 +74,18 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 	}
 }
 
-bool checkMoveMethod(Program p, Program pR, MethodCase m){
-	return true;
+bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:\static(decl, receiver)){
+	differences = p.statements - pR.statements;
+	differencesR = pR.statements - p.statements;
+	//	iprintln(differencesR);
+	//check entry and exit points
+	checked = {s1, s2 | s1:entryPoint(id1, methodDecl) 			<- differences, s2:entryPoint(id2, decl) 					<- differencesR, id1 == id2}
+	 		+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 					<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:read(id1, sourceClassDecl, dep1) 	<- differences, s2:read(id2, destinationClassDecl, dep2) 	<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:change(id1, sourceClassDecl, dep1) 	<- differences, s2:change(id2, destinationClassDecl, dep2) 	<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 				<- differencesR, id1 == id2, r1 == r2, dep1 == dep2}
+			;
+	return (differences + differencesR) == checked;
 }
 
 //Configure refactoring
@@ -80,8 +93,7 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 	//find the configuration if the method is static
 	if(static() in (m@modifiers ? {})){
 		println("The method is static! Move on ;)");
-		receiver = addGeneratedId(createQualifiedName(to@decl), m@src);
-		iprintln(receiver);
+		receiver = createQualifiedClass(to@decl,m@src);
 		newDecl = getNewMethodDeclaration(from@decl, to@decl, m, true, false);	
 		return MethodCase::\static(newDecl, receiver);
 	}
@@ -103,7 +115,7 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 			println("The destination class is a field!");
 			newDecl = getNewMethodDeclaration(from@decl, to@decl, m, false, false);
 			fname = extractVariableNameFromDecl(v@decl);
-			fieldExp = simpleName(fname)[@decl = v@decl];
+			fieldExp = simpleName(fname)[@decl = v@decl][@src = generateId(m@src)][@typ = v@typ];
 			param = Declaration::parameter(simpleType(createQualifiedName(from@decl)[@src = m@src]), pname, 0)[@src = m@src][@decl = |java+parameter:///|+newDecl.path+"/"+pname][@typ = from@typ];
 			return MethodCase::inFields(newDecl, fieldExp, param);
 		}
@@ -115,26 +127,28 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 Declaration adaptMethodsCode(MethodCase s:\static(decl, receiver), Declaration m:method(r, name, ps, exs, body)){
 	from = getClassDeclFromMethod(m@decl);
 	body = top-down-break visit(body){
-		case q:qualifiedName(_,_):{
-			if(isFieldOf(q, from)){
-				insert accessThroughVariable(q, receiver);//TODO : is this working?
-			}
+		case q:qualifiedName(exp, _):{
+			if(isField(q))
+				insert replaceAccessor(q, receiver);
 		}
-		case e:simpleName(name):{
-			if(isFieldOf(e, from)){
-				insert qualifiedName(reveiver, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
-			}
+		case s:simpleName(_):{
+			if(s@decl == from)
+				insert replaceAccessor(s, receiver);
 		}
 	}
 	return method(r, name, ps, exs, body)[@decl = decl][@src = m@src][@typ = m@typ][@modifiers = m@modifiers];
 }
 
-Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, name, args)){
-	return methodCall(isSuper, addGeneratedId(receiver), name, args)[@decl = decl][@typ = m@typ][@src = m@src];
-}
+Expression replaceAccessor(Expression s:simpleName(_), Expression receiver)
+	= receiver[@src = s@src];
+Expression replaceAccessor(Expression q:qualifiedName(exp, s), Expression receiver)
+	= qualifiedName(replaceAccessor(exp, receiver), s)[@decl = q@decl][@typ = q@typ][@src = q@src];
+
+Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, name, args))
+	= methodCall(isSuper, addGeneratedId(receiver), name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 
 Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:methodCall(isSuper, rec, name, args)){
-	return methodCall(isSuper, addGeneratedId(receiver), name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+	return methodCall(isSuper, receiver[@src = rec@src], name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 //Method with the destination class as a parameter
