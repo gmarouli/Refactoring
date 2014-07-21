@@ -6,6 +6,7 @@ import Set;
 import String;
 
 import lang::sccfg::ast::DataFlowLanguage;
+import lang::sccfg::converter::util::Getters;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import refactoring::microrefactorings::GetInfo;
@@ -14,12 +15,12 @@ import lang::sccfg::converter::Java2SDFG;
 import refactoring::rearranging_code::GenerateIds;
 
 data MethodCase = \static(loc decl, Expression receiver)
-			| inParameters(loc decl, int index)
+			| inParameters(loc decl, int index, loc origParam, loc newParam)
 			| inFields(loc decl, Expression fieldExp, Declaration param)
 			| notTransferable(); 
 
 set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinationClassDecl){
-	asts = desugarAccessToFields(asts, |java+class:///|+extractClassName(methodDecl));
+	asts = desugarAccessToFields(asts, methodDecl);
 
 	Declaration targetMethod = getMethodFromDecl(asts, methodDecl);
 	Declaration sourceClass = getClassFromDecl(asts, |java+class:///|+extractClassName(targetMethod@decl));
@@ -77,15 +78,35 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:\static(decl, receiver)){
 	differences = p.statements - pR.statements;
 	differencesR = pR.statements - p.statements;
-	//	iprintln(differencesR);
-	//check entry and exit points
 	checked = {s1, s2 | s1:entryPoint(id1, methodDecl) 			<- differences, s2:entryPoint(id2, decl) 					<- differencesR, id1 == id2}
-	 		+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 					<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 					<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:read(id1, sourceClassDecl, dep1) 	<- differences, s2:read(id2, destinationClassDecl, dep2) 	<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:change(id1, sourceClassDecl, dep1) 	<- differences, s2:change(id2, destinationClassDecl, dep2) 	<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 				<- differencesR, id1 == id2, r1 == r2, dep1 == dep2}
 			;
 	return (differences + differencesR) == checked;
+}
+
+bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inParameters(loc decl, int index, loc origParam, loc newParam)){
+	differences = p.statements - pR.statements;
+	differencesR = pR.statements - p.statements;
+	sourceThis = sourceClassDecl;
+	sourceThis.path = sourceClassDecl.path + "/this";
+	destinationThis = destinationClassDecl;
+	destinationThis.path = destinationClassDecl.path + "/this";
+	
+	map[loc,loc] swapped = (r1:dep1 | s1:call(id1, r1, methodDecl, dep1) <- differences, s2:call(id2, r2, decl, dep2) <- differencesR, id1 == id2, r1 == dep2, dep1 == r2);
+
+	//check entry and exit points
+	checked = {s1, s2 | s1:entryPoint(id1, methodDecl)			<- differences, s2:entryPoint(id2, decl) 							<- differencesR, id1 == id2}
+	 		+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 							<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:read(id1, sourceThis, dep1) 			<- differences, s2:read(id2, newParam, dep2) 						<- (differencesR), id1 == id2}
+			+ {s1, s2 | s1:read(id1, origParam, dep1) 			<- differences, s2:read(id2, destinationThis, dep2) 				<- (differencesR), id1 == id2}
+			+ {s1, s2 | s1:change(id1, sourceClassDecl, dep1)	<- differences, s2:change(id2, destinationClassDecl, dep2) 			<- (differencesR), id2 == (swapped[id1] ? emptyId)}
+			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, id1 == id2, r1 == dep2, dep1 == r2}
+			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, id1 == id2, dep1 == dep2, r2 == (swapped[r1] ? emptyId)}
+			;
+	return ((differencesR + differences) - checked) == {};
 }
 
 //Configure refactoring
@@ -103,8 +124,10 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 		if(exp@decl == to@decl){
 			println("The destination class is a parameter!");
 			newDecl = getNewMethodDeclaration(from@decl, to@decl, m, false, true);
-			index = indexOf(ps,p);
-			return MethodCase::inParameters(newDecl, index);
+			int i = indexOf(ps,p);
+			loc newParamDecl = p@decl;
+			newParamDecl.path = newDecl.path + "/" + substring(p@decl.path,findLast(p@decl.path, "/")+1);
+			return MethodCase::inParameters(newDecl, i, p@decl, newParamDecl);
 		}
 	}
 	
@@ -152,19 +175,17 @@ Expression adaptMethodCall(MethodCase s:\static(decl, receiver), Expression m:me
 }
 
 //Method with the destination class as a parameter
-Declaration adaptMethodsCode(MethodCase s:inParameters(loc decl, int index), Declaration m:method(r, name, ps, exs, body)){
+Declaration adaptMethodsCode(MethodCase s:inParameters(loc decl, int index, loc origP, loc newP), Declaration m:method(r, name, ps, exs, body)){
 	oldDecl = m@decl;
-	paramDecl = ps[index]@decl;
 	from = getClassDeclFromMethod(m@decl);
 	to = getClassDeclFromMethod(decl);
 	
 	ps = replaceWithNewParameter(ps, index, from, decl);
-	body = renameParameterAndThis(body, paramDecl, ps[index]@decl, from, to);
-	body = adaptMethodCalls(s, m@decl, body);
-	return method(r, name, ps, exs, body)[@decl = decl][@modifiers = m@modifiers];
+	body = renameParameterAndThis(body, m@decl, decl, origP, newP, from, to);
+	return method(r, name, ps, exs, body)[@decl = decl][@src = m@src][@typ = m@typ][@modifiers = m@modifiers];
 }
 
-Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), m:methodCall(isSuper, name, args)){
+Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index, loc origP, loc newP), m:methodCall(isSuper, name, args)){
 	from = getClassDeclFromMethod(decl);
 	rec = args[index];
 	if((index+1) < size(args))
@@ -174,7 +195,7 @@ Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), m:met
 	return methodCall(isSuper, rec, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
-Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index), Expression m:methodCall(isSuper, rec, name, args)){
+Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index, loc origP, loc newP), Expression m:methodCall(isSuper, rec, name, args)){
 	newRec = args[index];
 	if((index+1) < size(args))
 		args = args[0..index]+[receiver]+args[index+1..];
@@ -193,30 +214,25 @@ list[Declaration] replaceWithNewParameter(list[Declaration] ps, int index, loc f
 }
 
 Declaration replaceParameterType(Declaration p:parameter(simpleType(exp), name, d), loc from, loc methodDecl){
-	return Declaration::parameter(simpleType(createQualifiedName(from)[@src = exp@src]), name, d)[@src = p@src][@decl = |java+parameter:///|+methodDecl.path+"/"+name][@typ = class(from,[])];
+	return Declaration::parameter(simpleType(createQualifiedClass(from, exp@src)[@src = exp@src]), name, d)[@src = p@src][@decl = |java+parameter:///|+methodDecl.path+"/"+name][@typ = class(from,[])];
 }
 
 Statement renameParameterAndThis(Statement body, loc oldMethodDecl, loc newMethodDecl, loc paramDecl, loc newParamDecl, loc from, loc to){
 	newParam = simpleName(extractVariableNameFromDecl(newParamDecl))[@decl = newParamDecl][@typ = class(from,[])];
-
 	return top-down-break visit(body){
 		case q:qualifiedName(_,_):{
-			if(isFieldOf(q, from)){
+			if(isField(q)){
 				insert accessThroughVariable(q, newParam);
 			}
 			else if(getFirstAccessDecl(q) == paramDecl){
 				insert insertAccessThroughThis(q, to);
 			}
-			else
-				insert q;
 		}
 		case f:fieldAccess(isSuper, exp, name) => convertFieldToQualified(f, newParam)
-		case e:this():{
-			insert newParam[@src = e@src];
-		}
+		case e:this() => newParam[@src = e@src]
 		case e:simpleName(name):{
 			if(e@decl == paramDecl){
-				insert this()[@decl = paramDecl][@typ = e@typ];
+				insert this()[@decl = paramDecl][@typ = e@typ][@src = e@src];
 			}
 			else if(isFieldOf(e, from)){
 				insert qualifiedName(newParam, e)[@src = e@src][@decl = e@decl][@typ = e@typ];
@@ -311,12 +327,12 @@ Expression accessThroughVariable(Expression q:qualifiedName(exp,f), Expression n
 	= qualifiedName(accessThroughVariable(exp,newParam), f)[@src = q@src][@decl = q@decl][@typ = q@typ]; 
 	
 Expression convertFieldToQualified(Expression f:fieldAccess(_, t:this(), name), Expression newParam)
-	= qualifiedName(newParam[@src = t@src], simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ]);
+	= qualifiedName(newParam[@src = t@src], simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ])[@decl = f@decl][@src = f@src][@typ = f@typ];
 Expression convertFieldToQualified(Expression f:fieldAccess(_, exp, name), Expression newParam)
-	= qualifiedName(convertFieldToQualified(exp, newParam), simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ]);
+	= qualifiedName(convertFieldToQualified(exp, newParam), simpleName(name)[@decl = f@decl][@src = f@src][@typ = f@typ])[@decl = f@decl][@src = f@src][@typ = f@typ];
 
-Expression insertAccessThroughThis(Expression q:qualifiedName(simpleName(_), s:simpleName(name)), loc to)
-	= fieldAccess(false, \this()[@typ = class(to,[])][@decl = s@decl][@src = s@src],name);
+Expression insertAccessThroughThis(Expression q:qualifiedName(v:simpleName(_), s:simpleName(name)), loc to)
+	= fieldAccess(false, \this()[@decl = to][@src = v@src][@typ = class(to,[])],name)[@decl = s@decl][@src = s@src][@typ = s@typ];
 Expression insertAccessThroughThis(Expression q:qualifiedName(exp, s:simpleName(name)), loc to)
-	= fieldAccess(false, insertAccessThroughThis(exp, to), name);
+	= fieldAccess(false, insertAccessThroughThis(exp, to), name)[@decl = s@decl][@typ = s@typ][@src = s@src];
 	
