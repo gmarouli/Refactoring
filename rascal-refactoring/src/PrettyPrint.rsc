@@ -336,6 +336,9 @@ str prettyPrint(Expression e:postfix(operand, operator), str indent)
 str prettyPrint(Expression e:simpleName(name), str indent)
 	= name;
 
+str prettyPrint(Expression e:markerAnnotation(name), str indent)
+	= "name";
+
 default str prettyPrint(Expression s, str indent){
 	println("Unknown expression: <s>");
 	return "";
@@ -497,6 +500,9 @@ str prettyPrint(Modifier m:\static(), str indent)
 str prettyPrint(Modifier m:\volatile(), str indent)
 	= "volatile";	
 
+str prettyPrint(Modifier m:annotation(exp), str indent)
+	= indent+"@"+prettyPrint(exp)+"\n";
+	
 default str prettyPrint(Modifier m, str indent){
 	println("Unknown modifier: <m>");
 	return "";
