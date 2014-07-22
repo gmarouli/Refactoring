@@ -48,6 +48,10 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 		}
 	}
 	refactoredAsts = visit(refactoredAsts){
+		case m:method(_,_,_,_,b):{
+			if(m@decl == |java+method:///sieve_of_eratosthenes/app/SieveApplication/main(java.lang.String%5B%5D)|)
+				iprintln(b);
+		}
 		case m:methodCall(_, _, _, _):{
 			if(m@decl == methodDecl)
 				insert adaptMethodCall(methodConfig, m);
@@ -109,6 +113,27 @@ bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl,
 	return ((differencesR + differences) - checked) == {};
 }
 
+bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inFields(loc decl, Expression fieldExp, Declaration param)){
+	differences = p.statements - pR.statements;
+	differencesR = pR.statements - p.statements;
+	sourceThis = sourceClassDecl;
+	sourceThis.path = sourceClassDecl.path + "/this";
+	destinationThis = destinationClassDecl;
+	destinationThis.path = destinationClassDecl.path + "/this";
+	fieldDecl = fieldExp@decl;
+	map[loc,loc] swapped = (r1:dep1 | s1:call(id1, r1, methodDecl, dep1) <- differences, s2:call(id2, r2, decl, dep2) <- differencesR, id1 == id2, r1 == dep2, dep1 == r2);
+	paramDecl = param@decl;
+	//check entry and exit points
+	checked = {s1, s2 | s1:entryPoint(id1, methodDecl)			<- differences, s2:entryPoint(id2, decl) 							<- differencesR, id1 == id2}
+	 		+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 							<- differencesR, id1 == id2}
+			+ {s1, s2 | s1:read(id1, sourceThis, dep1) 			<- differences, s2:read(id2, paramDecl, dep2) 						<- (differencesR), id1 == id2}
+			+ {s | s:change(id2, destinationClassDecl, dep2) 	<- differencesR}
+			+ {r, s1, s2 | s1:call(id1, r1, methodDecl, dep1) 	<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, r:read(nId, fieldDecl, dep3) <- differencesR,  id1 == id2, r2 == nId, r1 == dep3, dep1 == dep2}
+			+ {r, s1, s2 | s1:call(id1, r1, methodDecl, _) 	 	<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, r:read(nId, fieldDecl, dep3) <- differencesR,  id1 == id2, r2 == nId, r1 == dep3, dep2 == r1}
+			;
+	return ((differencesR + differences) - checked) == {};
+}
+
 //Configure refactoring
 MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), Declaration to, Declaration m:method(r, n, ps, exs, b)){
 	//find the configuration if the method is static
@@ -139,7 +164,7 @@ MethodCase getMovedMethodConfiguration(Declaration from:class(_, _, _, body), De
 			newDecl = getNewMethodDeclaration(from@decl, to@decl, m, false, false);
 			fname = extractVariableNameFromDecl(v@decl);
 			fieldExp = simpleName(fname)[@decl = v@decl][@src = generateId(m@src)][@typ = v@typ];
-			param = Declaration::parameter(simpleType(createQualifiedName(from@decl)[@src = m@src]), pname, 0)[@src = m@src][@decl = |java+parameter:///|+newDecl.path+"/"+pname][@typ = from@typ];
+			param = Declaration::parameter(simpleType(createQualifiedClass(from@decl,m@src)[@src = generateId(m@src)]), pname, 0)[@src = generateId(m@src)][@decl = |java+parameter:///|+newDecl.path+"/"+pname][@typ = from@typ];
 			return MethodCase::inFields(newDecl, fieldExp, param);
 		}
 	}
@@ -261,35 +286,31 @@ Declaration adaptMethodsCode(MethodCase s:inFields(decl, fieldExp, param), Decla
 	
 	newParam = simpleName(extractVariableNameFromDecl(param@decl))[@decl = param@decl][@typ = class(from,[])];	
 	body = adaptCallsAndFields(body, decl, m@decl, from, fieldExp, newParam);
-	return method(r, name, ps + [param[@decl = m@decl][@src = generateId(m@src)]], exs, body)[@decl = decl][@modifiers = m@modifiers];
+	return method(r, name, ps + [param[@decl = m@decl][@src = generateId(m@src)]], exs, body)[@decl = decl][@typ = m@typ][@modifiers = m@modifiers][@src = m@src];
 }
 
 Expression adaptMethodCall(MethodCase s:inFields(decl, fieldExp, param), Expression m:methodCall(isSuper, name, list[Expression] args)){
 	from = getClassDeclFromMethod(decl);
-	args += [\this()[@typ = class(from,[])]];
-	return methodCall(isSuper, fieldExp[@src = m@src], name, args)[@decl = decl][@typ = m@typ][@src = m@src];
+	args += [\this()[@typ = class(from,[])][@src = generateId(m@src)]];
+	return methodCall(isSuper, fieldExp[@src = generateId(m@src)], name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 Expression adaptMethodCall(MethodCase s:inFields(decl, fieldExp, param), Expression m:methodCall(isSuper, rec, name, args)){	
-	return methodCall(isSuper, qualifiedName(rec, fieldExp[@src = m@src]), name, args + [rec])[@decl = decl][@typ = m@typ][@src = m@src];
+	return methodCall(isSuper, qualifiedName(rec, fieldExp[@src = generateId(m@src)])[@decl = fieldExp@decl][@typ = fieldExp@typ][@src = generateId(m@src)], name, args + [rec])[@decl = decl][@typ = m@typ][@src = m@src];
 }
 
 Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from, Expression fieldExp, Expression newParam){
 	return top-down-break visit(body){
 		case q:qualifiedName(_,_):{
-			if(isFieldOf(q, from)){
+			if(isField(q)){
 				insert accessThroughVariable(q, newParam);
 			}
-			else
-				insert q;
 		}
 		case f:fieldAccess(_, _, _) => convertFieldToQualified(f, newParam)
-		case e:this():{
-			insert newParam[@src = e@src];
-		}
+		case e:this() => newParam[@src = e@src]
 		case e:simpleName(name):{
-			if(isFieldOf(e, from)){
-				insert qualifiedName(newParam, e)[@src = generateId(e@src)][@decl = e@decl][@typ = e@typ];
+			if(isField(e)){
+				insert qualifiedName(newParam[@src = generateId(e@src)], e)[@src = generateId(e@src)][@decl = e@decl][@typ = e@typ];
 			}
 		}
 		case m:methodCall(isSuper, name, list[Expression] args):{
@@ -298,9 +319,9 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 					expressionStatement(arg) = adaptCallsAndFields(expressionStatement(arg), newDecl, oldDecl, from, fieldExp, newParam);
 					append(arg);
 				}
-				args += [newParam];
+				args += [newParam[@src = generateId(e@src)]];
 				//careful not nice src
-				insert methodCall(isSuper, qualifiedName(newParam[@src = generateId(m@src)], fieldExp[@src = m@src]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+				insert methodCall(isSuper, qualifiedName(newParam[@src = generateId(m@src)], fieldExp[@src = generateId(m@src)])[@decl = fieldExp@decl][@typ = fieldExp@typ][@src = generateId(m@src)], name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
 			}
 			else 
 				fail;
@@ -313,7 +334,7 @@ Statement adaptCallsAndFields(Statement body, loc newDecl, loc oldDecl, loc from
 				}
 				args += [rec];
 				//careful not nice src
-				insert methodCall(isSuper, qualifiedName(rec, fieldExp[@src = generateId(m@src)]), name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
+				insert methodCall(isSuper, qualifiedName(rec, fieldExp[@src = generateId(m@src)])[@decl = fieldExp@decl][@typ = fieldExp@typ][@src = generateId(m@src)], name, args)[@decl = newDecl][@typ = m@typ][@src = m@src];
 			}
 			else
 				fail;

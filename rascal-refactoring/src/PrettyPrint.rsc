@@ -501,7 +501,7 @@ str prettyPrint(Modifier m:\volatile(), str indent)
 	= "volatile";	
 
 str prettyPrint(Modifier m:annotation(exp), str indent)
-	= indent+"@"+prettyPrint(exp)+"\n";
+	= indent+"@"+prettyPrint(exp, indent)+"\n";
 	
 default str prettyPrint(Modifier m, str indent){
 	println("Unknown modifier: <m>");
