@@ -1,18 +1,20 @@
 module refactoring::moving_methods::MoveMethod
 
 import IO;
-import List;
 import Set;
+import List;
 import String;
 
-import lang::sccfg::ast::DataFlowLanguage;
-import lang::sccfg::converter::util::Getters;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
+
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
+import lang::sdfg::converter::Java2SDFG;
+import lang::sdfg::converter::util::Getters;
+
 import refactoring::microrefactorings::GetInfo;
-import refactoring::microrefactorings::MicroRefactorings;
-import lang::sccfg::converter::Java2SDFG;
 import refactoring::rearranging_code::GenerateIds;
+import refactoring::microrefactorings::MicroRefactorings;
 
 data MethodCase = \static(loc decl, Expression receiver)
 			| inParameters(loc decl, int index, loc origParam, loc newParam)
@@ -76,8 +78,8 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 }
 
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:\static(decl, receiver)){
-	differences = p.statements - pR.statements;
-	differencesR = pR.statements - p.statements;
+	differences = p.stmts - pR.stmts;
+	differencesR = pR.stmts - p.stmts;
 	checked = {s1, s2 | s1:entryPoint(id1, methodDecl) 			<- differences, s2:entryPoint(id2, decl) 					<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 					<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:read(id1, sourceClassDecl, dep1) 	<- differences, s2:read(id2, destinationClassDecl, dep2) 	<- differencesR, id1 == id2}
@@ -88,13 +90,12 @@ bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl,
 }
 
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inParameters(loc decl, int index, loc origParam, loc newParam)){
-	differences = p.statements - pR.statements;
-	differencesR = pR.statements - p.statements;
+	differences = p.stmts - pR.stmts;
+	differencesR = pR.stmts - p.stmts;
 	sourceThis = sourceClassDecl;
 	sourceThis.path = sourceClassDecl.path + "/this";
 	destinationThis = destinationClassDecl;
 	destinationThis.path = destinationClassDecl.path + "/this";
-	
 	map[loc,loc] swapped = (r1:dep1 | s1:call(id1, r1, methodDecl, dep1) <- differences, s2:call(id2, r2, decl, dep2) <- differencesR, id1 == id2, r1 == dep2, dep1 == r2);
 
 	//check entry and exit points
@@ -102,16 +103,21 @@ bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl,
 	 		+ {s1, s2 | s1:exitPoint(id1, methodDecl) 			<- differences, s2:exitPoint(id2, decl) 							<- differencesR, id1 == id2}
 			+ {s1, s2 | s1:read(id1, sourceThis, dep1) 			<- differences, s2:read(id2, newParam, dep2) 						<- (differencesR), id1 == id2}
 			+ {s1, s2 | s1:read(id1, origParam, dep1) 			<- differences, s2:read(id2, destinationThis, dep2) 				<- (differencesR), id1 == id2}
+			+ {s1, s2 | s1:read(id1, sourceThis, dep1) 			<- differences, s2:read(id2, destinationThis, dep2) 				<- (differencesR), id1 == id2}
 			+ {s1, s2 | s1:change(id1, sourceClassDecl, dep1)	<- differences, s2:change(id2, destinationClassDecl, dep2) 			<- (differencesR), id2 == (swapped[id1] ? emptyId)}
 			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, id1 == id2, r1 == dep2, dep1 == r2}
 			+ {s1, s2 | s1:call(id1, r1, methodDecl, dep1) 		<- differences, s2:call(id2, r2, decl, dep2) 						<- differencesR, id1 == id2, dep1 == dep2, r2 == (swapped[r1] ? emptyId)}
+			+ {s1, s2 | s1:releaseLock(id1, sourceThis, dep1) 	<- differences, s2:releaseLock(id2, newParam, dep2) 				<- (differencesR), id1 == id2, dep1 == dep2}
+			+ {s1, s2 | s1:releaseLock(id1, origParam, dep1) 	<- differences, s2:releaseLock(id2, destinationThis, dep2) 			<- (differencesR), id1 == id2, dep1 == dep2}
+			+ {s1, s2 | s1:acquireLock(id1, sourceThis, dep1) 	<- differences, s2:acquireLock(id2, newParam, dep2) 				<- (differencesR), id1 == id2, dep1 == dep2}
+			+ {s1, s2 | s1:acquireLock(id1, origParam, dep1) 	<- differences, s2:acquireLock(id2, destinationThis, dep2) 			<- (differencesR), id1 == id2, dep1 == dep2}
 			;
 	return ((differencesR + differences) - checked) == {};
 }
 
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inFields(loc decl, Expression fieldExp, Declaration param)){
-	differences = p.statements - pR.statements;
-	differencesR = pR.statements - p.statements;
+	differences = p.stmts - pR.stmts;
+	differencesR = pR.stmts - p.stmts;
 	sourceThis = sourceClassDecl;
 	sourceThis.path = sourceClassDecl.path + "/this";
 	destinationThis = destinationClassDecl;
@@ -209,10 +215,12 @@ Declaration adaptMethodsCode(MethodCase s:inParameters(loc decl, int index, loc 
 Expression adaptMethodCall(MethodCase s:inParameters(loc decl, int index, loc origP, loc newP), m:methodCall(isSuper, name, args)){
 	from = getClassDeclFromMethod(decl);
 	rec = args[index];
+	thisSrc = m@src;
+	thisSrc.offset = thisSrc.offset + 1;
 	if((index+1) < size(args))
-		args = args[0..index]+[this()[@decl = from]]+args[index+1..];
+		args = args[0..index]+[this()[@decl = from][@typ = class(from,[])][@src = thisSrc]]+args[index+1..];
 	else
-		args = args[0..index]+[this()[@decl = from]];
+		args = args[0..index]+[this()[@decl = from][@typ = class(from,[])][@src = thisSrc]];
 	return methodCall(isSuper, rec, name, args)[@decl = decl][@typ = m@typ][@src = m@src];
 }
 

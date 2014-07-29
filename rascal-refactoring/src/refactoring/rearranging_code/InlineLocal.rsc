@@ -10,9 +10,9 @@ import PrettyPrint;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 
-import lang::sccfg::ast::DataFlowLanguage;
-import lang::sccfg::converter::Java2SDFG;
-import lang::sccfg::converter::util::Getters;
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
+import lang::sdfg::converter::Java2SDFG;
+import lang::sdfg::converter::util::Getters;
 
 import refactoring::microrefactorings::GetInfo;
 import refactoring::microrefactorings::MicroRefactorings;
@@ -20,7 +20,7 @@ import refactoring::rearranging_code::GenerateIds;
 
 data HelpingExp = helpingExp(Expression contExp, Expression brExp, Expression retExp, map[str, Expression] exs);
 
-set[Declaration] inlineLocal(set[Declaration] asts, loc local, loc sourceProject){
+set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
 	
 	//Collect synchronized methods
@@ -32,7 +32,7 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local, loc sourceProject
 	refactoredAsts = visit(asts){
 		case m:method(r, n, ps, exs, b):{
 			if(m@decl == targetedMethodDecl){
-				<b, replacementIds> = inlineLocal(b, local, {}, replacementIds, synchronizedMethods);
+				<b, replacementIds, inlinedBy> = inlineLocal(b, local, {}, replacementIds, inlinedBy, synchronizedMethods);
 				insert method(r, n, ps, exs, b)[@src = m@src][@decl = m@decl][@typ = m@typ];
 			}
 			else
@@ -42,7 +42,7 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local, loc sourceProject
 	
 	pR = createDFG(refactoredAsts);
 		
-	if(checkInlineLocal(p,pR, local, replacementIds)){
+	if(checkInlineLocal(p,pR, local, replacementIds, inlinedBy)){
 		println("Refactoring InlineLocal successful!");
 		return refactoredAsts;
 	}
@@ -53,65 +53,36 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local, loc sourceProject
 }
 
 bool checkInlineLocal(Program p, Program pR, loc local, map[loc,loc] replacementIds){
-	differences = p.statements - pR.statements;
-	differencesR = pR.statements - p.statements;
+	differences = p.stmts - pR.stmts;
+	differencesR = pR.stmts - p.stmts;
 	mapIds = ();
 	for(s <- differences + differencesR )
 		mapIds[getIdFromStmt(s)] = mapIds[getIdFromStmt(s)] ? {} + {s};
 	iprintln(mapIds);
-	checked = {s,generateOriginal(s,replacementIds) | s <- differencesR, generateOriginal(s,replacementIds) in p.statements};
+	checked = {s,generateOriginal(s,replacementIds) | s <- differencesR, generateOriginal(s,replacementIds) in p.stmts, verifyDependency(s), inlinedBy};
 	differences -= checked;
 	checked += {s,																	//assign
 				sRead,									//read local
 				sAssign,	//assign local
 				sR
 			|	s <- differences, getVarFromStmt(s) != local, bprintln(s),
-				sRead <- mapIds[getDependencyFromStmt(s)],									//assign
+				sRead <- mapIds[getDependencyFromStmt(s)] ? {},									//assign
 				getVarFromStmt(sRead) == local, 								//read local
 				sAssign <- mapIds[getDependencyFromStmt(sRead)],
 				sR <- differencesR,
 				getIdFromStmt(sR) == getIdFromStmt(s),
 				getDependencyFromStmt(sAssign) == getOriginalId(replacementIds, getDependencyFromStmt(sR))	//read j?
 			};
-	//originalToNew = invert(replacementIds);
-	////find all reads of local
-	//for(r:read(_, local, d) <- differences){
-	//	//Get the assignments
-	//	for(dep <- mapIds[d]){ 
-	//		//get the replacement ids
-	//		set[loc] newIds = getRefactoredId(originalToNew, getDependencyFromStmt(dep));
-	//		//for every replacement id
-	//		for(id <- newIds){
-	//			for(targetDep <- mapIds[getDependencyFromStmt(dep)]){
-	//				println(checkForCycles(id, getDependencyFromStmt(targetDep), mapIds));
-	//			}
-	//		}	
-	//	}
-	//	iprintln(newIds);
-	//}
-	//iprintln(checked);
-	//
-	//iprintln(differences);
-	checked += findUnusedStmt(differences, p.statements,{});
+
+	//checked += findUnusedStmt(differences, p.stmts,{});
 	iprintln((differences + differencesR) - checked);
 	println("Differences: <size((differences + differencesR) - checked)>");
 	return ((differences + differencesR) - checked) == {};
 }
 
-set[Stmt] findUnusedStmt(set[Stmt] differences, set[Stmt] stmts){
-	for(assign(id, local, dep) <- differences){
-		if(!(id in collectDeps(stmts)))
-			return {};
-		else{
-			
-		} 
-	}
-}
-bool checkForCycles(Stmt stmt, loc target, map[loc,set[Stmt]] mapIds){
-	set[Stmt] path = {};
-	while(id != target){
-		id = getDependenciesmapIds[id];
-	}
+
+bool verifyDependency(Stmt s:read(id, var, dep), inlinedBy){
+	
 }
 
 Stmt generateOriginal(Stmt s:read(id, var, dep), map[loc, loc] replacementIds)
@@ -149,12 +120,12 @@ bool isAssign(Stmt e:assign(_,_,_))
 default bool isAssign(Stmt e)
 	= false;
 	
-tuple[Statement, map[loc,loc]] inlineLocal(Statement blockStmt, loc local, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
+tuple[Statement, map[loc,loc], map[loc,set[loc]]] inlineLocal(Statement blockStmt, loc local, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
 	loc targetBlock = findBlockContainingLocal(blockStmt, local);
 	blockStmt = top-down-break visit(blockStmt){
 		case s:block(stmts):{
 			if(s@src == targetBlock){
-				<s, exp, replacementVariables, replacementIds, _> = inlineLocalInStatement(s, local, Expression::null(), replacementVariables, replacementIds, synchronizedMethods);
+				<s, exp, replacementVariables, replacementIds, inlinedBy, _> = inlineLocalInStatement(s, local, Expression::null(), replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 				if(containsFieldsOrMethods(replacementVariables))
 					println("Warning: this refactoring inlined code that contained shared variables (fields) or method calls. In concurrent execution the value assigned from inlining could be different.");
 				insert s;
@@ -163,7 +134,7 @@ tuple[Statement, map[loc,loc]] inlineLocal(Statement blockStmt, loc local, set[l
 				fail;
 		}
 	}
-	return <blockStmt, replacementIds>;
+	return <blockStmt, replacementIds, inlinedBy>;
 }	
 
 ////assert(Expression expression)
@@ -374,23 +345,23 @@ tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInSt
 }
 
 //\try(Statement body, list[Statement] catchClauses)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\try(body, catchStatements), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
-	<body, exp, replacementVariables, replacementIds, extra> = inlineLocalInStatement(body, exp, replacementVariables, replacementIds, synchronizedMethods);
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\try(body, catchStatements), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
+	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	exitExtra = ();
 	catchStatements = for(cs <- catchStatements){
-		<cs, expC, replacementVariables, replacementIds, extraC> = gatherStmtFromCatchStatements(cs, exp, replacementVariables, replacementIds, synchronizedMethods, getExceptionExp(extra));	
+		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = gatherStmtFromCatchStatements(cs, exp, replacementVariables, replacementIds, synchronizedMethods, inlinedBy, getExceptionExp(extra));	
 		exitExtra = updateExtra(exitExtra, extraC);
 		append(cs);
 	}
-	return <\try(body, catchStatements)[@src = s@src], exp, replacementVariables, replacementIds, exitExtra>;
+	return <\try(body, catchStatements)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, exitExtra>;
 }
 
 //\try(Statement body, list[Statement] catchClauses, Statement \finally) 
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\try(body, catchStatements, fin), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
-	<body, exp, replacementVariables, replacementIds, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\try(body, catchStatements, fin), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
+	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	exitExtra = helpingExp(Expression::null(),Expression::null(),Expression::null(),());
 	catchStatements = for(cs <- catchStatements){
-		<cs, expC, replacementVariables, replacementIds, extraC> = inlineLocalInStatement(cs, local, exp, replacementVariables, replacementIds, synchronizedMethods, getExceptionExp(extra));	
+		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = inlineLocalInStatement(cs, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods, getExceptionExp(extra));	
 		exitExtra = updateExtra(exitExtra, extraC);
 		append(cs);
 	}
@@ -403,26 +374,26 @@ tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInSt
 	if(Expression::null() := exp){
 		exp = getReturnExp(extra);
 	}
-	<fin, exp, replacementVariables, replacementIds, extraC> = inlineLocalInStatement(fin, local, exp, replacementVariables, replacementIds, synchronizedMethods);	
+	<fin, exp, replacementVariables, replacementIds, extraC> = inlineLocalInStatement(fin, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);	
 	exitExtra = updateExtra(exitExtra, extraC);
-	return <\try(body, catchStatements, fin)[@src = s@src], exp, replacementVariables, replacementIds, exitExtra>;
+	return <\try(body, catchStatements, fin)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, exitExtra>;
 }
 
 //\catch(Declaration exception, Statement body)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\catch(except, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods, map[str, Expression] extra){
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\catch(except, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods, map[str, Expression] extra){
 	HelpingExp newExtra = helpingExp(Expression::null(), Expression::null(), Expression::null(), ());
 	visit(except){
 		case e:simpleName(_) : {
 			<exceptionExp, extra> = getAndRemoveExp(extra, e@decl.path);
-			<body, exp, replacementVariables, replacementIds, extraC> = inlineLocalInStatement(body, local, exceptionExp, replacementVariables, replacementIds, synchronizedMethods);	
+			<body, exp, replacementVariables, replacementIds, extraC> = inlineLocalInStatement(body, local, exceptionExp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);	
 			newExtra = updateExtra(newExtra, extraC);
 		}
 	}
-	return <\catch(except, body)[@src = s@src], exp, replacementVariables, replacementIds, updateExtra(newExtra, helpingExp(Expression::null(), Expression::null(), Expression::null(), extra))>;
+	return <\catch(except, body)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, updateExtra(newExtra, helpingExp(Expression::null(), Expression::null(), Expression::null(), extra))>;
 }
 
 //\declarationStatement(Declaration declaration)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:declarationStatement(v:variables(t, frags)), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:declarationStatement(v:variables(t, frags)), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
 	frags = for(f <- frags){
 		if(f@decl == local){
 			exp = getInitFromVariable(f);
@@ -433,58 +404,58 @@ tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInSt
 			println("Local variable found at <f@src>!");
 		}
 		else{
-			<f, exp, replacementVariables, replacementIds> = inlineLocal(f, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+			<f, exp, replacementVariables, replacementIds> = inlineLocal(f, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 			append(f);
 		}
 	}
 	extra = helpingExp(Expression::null(), Expression::null(), Expression::null(), ());
 	if(frags == [])
-		return <Statement::empty()[@src = s@src], exp, replacementVariables, replacementIds, extra>;
+		return <Statement::empty()[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, extra>;
 	else{
-		return <declarationStatement(variables(t, frags))[@src = s@src], exp, replacementVariables, replacementIds, extra>;
+		return <declarationStatement(variables(t, frags))[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, extra>;
 	}
 }
 //\while(Expression condition, Statement body)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\while(cond, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
-	<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, exp, replacementVariables, replacementIds, synchronizedMethods);
-	<body, exp, replacementVariables, replacementIds, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]],HelpingExp] inlineLocalInStatement(Statement s:\while(cond, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
+	<cond, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(cond, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
+	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	
 	if(Expression::null() := exp)
 		exp = getBreakExp(extra);
 	
-	return <\while(cond, body)[@src = s@src], exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), getReturnExp(extra), getExceptionExp(extra))>;
+	return <\while(cond, body)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), getReturnExp(extra), getExceptionExp(extra))>;
 }
 
 //expressionStatement(Expression stmt)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:\expressionStatement(e), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
-	<temp, exp, replacementVariables, replacementIds> = inlineLocal(e, local, exp, replacementVariables, replacementIds, synchronizedMethods);
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\expressionStatement(e), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
+	<temp, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(e, local, exp, replacementVariables, replacementIds, synchronizedMethods);
 	if(isLocalAssignment(e, local))
-		return <Statement::empty()[@src = s@src], exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
+		return <Statement::empty()[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
 	else
-		return <expressionStatement(temp)[@src = s@src], exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
+		return <expressionStatement(temp)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
 }
 
 
 //\constructorCall(bool isSuper, Expression expr, list[Expression] arguments)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:constructorCall(isSuper, e, args), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods) {
-	 <e, exp, replacementVariables, replacementIds> = inlineLocal(e, exp, replacementVariables, replacementIds, synchronizedMethods);
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:constructorCall(isSuper, e, args), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods) {
+	 <e, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(e, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	 args = for(arg <- args){
-	 	<arg, exp, replacementVariables, replacementIds> = inlineLocal(arg, exp, replacementVariables, replacementIds, synchronizedMethods);
+	 	<arg, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(arg, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	 	append(arg);
 	 }
-	 return <constructorCall(isSuper, e, args)[@src = s@src], exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
+	 return <constructorCall(isSuper, e, args)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
 }
  //\constructorCall(bool isSuper, list[Expression] arguments)
-tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s:constructorCall(isSuper, args), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods) {
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:constructorCall(isSuper, args), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods) {
 	 args = for(arg <- args){
-	 	<arg, exp, replacementVariables, replacementIds> = inlineLocal(arg, exp, replacementVariables, replacementIds, synchronizedMethods);
+	 	<arg, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(arg, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	 	append(arg);
 	 }
-	 return <constructorCall(isSuper, args)[@src = s@src], exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
+	 return <constructorCall(isSuper, args)[@src = s@src], exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
 }
 
-default tuple[Statement, Expression, set[loc], map[loc,loc], HelpingExp] inlineLocalInStatement(Statement s, loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods)
-	= <s, exp, replacementVariables, replacementIds, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
+default tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s, loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods)
+	= <s, exp, replacementVariables, replacementIds, inlinedBy, helpingExp(Expression::null(), Expression::null(), Expression::null(), ())>;
 
 bool breakingControlFlow(Statement s:\continue()) = true;
 bool breakingControlFlow(Statement s:\break()) = true;
@@ -494,7 +465,7 @@ bool breakingControlFlow(Statement s:\return(_)) = true;
 bool breakingControlFlow(Statement s:\throw(_)) = true;
 default bool breakingControlFlow(Statement s) =  false;
 	
-tuple[Expression, Expression, set[loc], map[loc,loc]] inlineLocal(Expression b, loc local, Expression exp, set[loc] replacementVariables, map[loc, loc] replacementIds, set[loc] synchronizedMethods){
+tuple[Expression, Expression, set[loc], map[loc,loc], map[loc,set[loc]]] inlineLocal(Expression b, loc local, Expression exp, set[loc] replacementVariables, map[loc, loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
 	b = top-down-break visit(b){
 		case e:conditional(cond, ifE, elseE):{
 			<cond, exp, replacementVariables, replacementIds> = inlineLocal(cond, local, exp, replacementVariables, replacementIds, synchronizedMethods);
@@ -529,11 +500,11 @@ tuple[Expression, Expression, set[loc], map[loc,loc]] inlineLocal(Expression b, 
 				replacementVariables = collectVariables(temp, replacementVariables);
 				if(operator == "="){
 					exp = temp;
-					insert(temp);
+					insert temp;
 				}
 				else{
 					exp = infix(exp, substring(operator,0,1), temp, [])[@typ = e@typ][@src = e@src];
-					insert(exp);
+					insert exp;
 				}					
 			}
 			else
@@ -543,6 +514,7 @@ tuple[Expression, Expression, set[loc], map[loc,loc]] inlineLocal(Expression b, 
 			if(e@decl == local){
 				temp = addGeneratedId(exp);
 				replacementIds = mapOriginalIdsWithInlined(temp, replacementIds);
+				inlinedBy[e@src] = gatherNewIds(temp);
 				insert temp;
 			}
 			else{
@@ -550,7 +522,7 @@ tuple[Expression, Expression, set[loc], map[loc,loc]] inlineLocal(Expression b, 
 			}
 		}
 	}
-	return <b, exp, replacementVariables, replacementIds>;
+	return <b, exp, replacementVariables, replacementIds, inlinedBy>;
 }
 
 map[loc, loc] mapOriginalIdsWithInlined(temp, map[loc, loc] replacementIds){
@@ -561,6 +533,9 @@ map[loc, loc] mapOriginalIdsWithInlined(temp, map[loc, loc] replacementIds){
 	}
 	return replacementIds;
 }
+
+set[loc] gatherNewIds(Expression temp)
+	= {e@src | /Expression e <- temp};
 
 bool containsSynchronizedMethodCalls(Expression exp, set[loc] synchronizedMethods){
 	visit(exp){

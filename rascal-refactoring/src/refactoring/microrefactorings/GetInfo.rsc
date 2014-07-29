@@ -15,8 +15,8 @@ bool isArrayAccess(Expression a:arrayAccess(_,_)) = true;
 default bool isArrayAccess(Expression lhs) = false;
 
 public set[loc] getSynchronizedMethods(Program p, rel[loc,loc] callGraph){
-	set[loc] synchronizedMethods = {d | acquireLock(_, _, dep) <- p.statements, exitPoint(id, d) <- p.statements, dep == id}
-						+ {d | releaseLock(_, _, dep) <- p.statements, entryPoint(id, d) <- p.statements, dep == id};
+	set[loc] synchronizedMethods = {d | acquireLock(_, _, dep) <- p.stmts, exitPoint(id, d) <- p.stmts, dep == id}
+						+ {d | releaseLock(_, _, dep) <- p.stmts, entryPoint(id, d) <- p.stmts, dep == id};
 	iprintln(callGraph);
 	newSynchronizedMethods = synchronizedMethods;
 	do{
@@ -117,12 +117,12 @@ Expression determineLock(Declaration method){
 											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [l@typ])];
 	}
 	else{
-		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(|java+class:///|+className,[])];
+		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(classDecl,[])];
 	}
 }
 
 Expression createQualifiedClass(loc decl, loc src)
-	= simpleName(substring(decl.path,findLast(decl.path,"/")))[@decl = decl][@src = src][@typ = createType(decl)];
+	= simpleName(substring(decl.path,findLast(decl.path,"/")+1))[@decl = decl][@src = src][@typ = createType(decl)];
 	
 TypeSymbol createType(loc decl){
 	if(decl.scheme == "java+class")
