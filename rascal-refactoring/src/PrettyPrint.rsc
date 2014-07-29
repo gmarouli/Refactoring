@@ -337,7 +337,7 @@ str prettyPrint(Expression e:simpleName(name), str indent)
 	= name;
 
 str prettyPrint(Expression e:markerAnnotation(name), str indent)
-	= "name";
+	= name;
 
 default str prettyPrint(Expression s, str indent){
 	println("Unknown expression: <s>");
@@ -455,7 +455,7 @@ str prettyPrint(Type s:simpleType(exp), str indent){
 	if(gs != []){
 		code += "\<";
 		for(g <- gs){
-			code += substring(g.path,findLast(g.path,"/"+1)) + ",";
+			code += substring(g.path,findLast(g.path,"/")+1) + ",";
 		}
 		code = substring(code, 0, findLast(code, ","));
 		code += "\>";
@@ -508,9 +508,9 @@ default str prettyPrint(Modifier m, str indent){
 	return "";
 }
 
-list[loc] getGenerics(TypeSymbol c:class(_, ls), str indent)
+list[loc] getGenerics(TypeSymbol c:\class(_, ls))
 	= [l | class(l,_) <- ls];
-list[loc] getGenerics(TypeSymbol c:interface(_, ls), str indent)
+list[loc] getGenerics(TypeSymbol c:\interface(_, ls))
 	= [l | class(l,_) <- ls];
 default list[loc] getGenerics(TypeSymbol c)
 	= [];

@@ -1,6 +1,7 @@
 module refactoring::microrefactorings::GetInfo
 
-import lang::sccfg::ast::DataFlowLanguage;
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
+import lang::java::m3::Core;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import String;
@@ -14,8 +15,8 @@ bool isArrayAccess(Expression a:arrayAccess(_,_)) = true;
 default bool isArrayAccess(Expression lhs) = false;
 
 public set[loc] getSynchronizedMethods(Program p, rel[loc,loc] callGraph){
-	set[loc] synchronizedMethods = {d | acquireLock(_, _, dep) <- p.statements, exitPoint(id, d) <- p.statements, dep == id}
-						+ {d | releaseLock(_, _, dep) <- p.statements, entryPoint(id, d) <- p.statements, dep == id};
+	set[loc] synchronizedMethods = {d | acquireLock(_, _, dep) <- p.stmts, exitPoint(id, d) <- p.stmts, dep == id}
+						+ {d | releaseLock(_, _, dep) <- p.stmts, entryPoint(id, d) <- p.stmts, dep == id};
 	iprintln(callGraph);
 	newSynchronizedMethods = synchronizedMethods;
 	do{
@@ -23,6 +24,10 @@ public set[loc] getSynchronizedMethods(Program p, rel[loc,loc] callGraph){
 		newSynchronizedMethods = synchronizedMethods + {decl | <decl, syncDecl> <- callGraph, (syncDecl in synchronizedMethods)};
 	}while(synchronizedMethods != newSynchronizedMethods);
 	return synchronizedMethods;
+}
+
+rel[loc,loc] getCallGraph(loc sourceProject){
+	return createM3FromDirectory(sourceProject)@methodInvocation;
 }
 
 rel[loc,loc] getCallGraph(set[Declaration] asts){
@@ -107,13 +112,24 @@ str extractVariableNameFromDecl(loc variable)
 Expression determineLock(Declaration method){
 	loc classDecl = getClassDeclFromMethod(method@decl);
 	if(static() in (method@modifiers ? {})){
-		Expression l = createQualifiedName(classDecl); 
+		Expression l = createQualifiedClass(classDecl, method@src);
 		return Expression::\type(simpleType(l))[@src = method@src]
-											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [TypeSymbol::class(classDecl,[])])];
+											   [@typ = TypeSymbol::class(|java+class:///java/lang/Class|, [l@typ])];
 	}
 	else{
-		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(|java+class:///|+className,[])];
+		return Expression::this()[@src = method@src][@typ = TypeSymbol::class(classDecl,[])];
 	}
+}
+
+Expression createQualifiedClass(loc decl, loc src)
+	= simpleName(substring(decl.path,findLast(decl.path,"/")+1))[@decl = decl][@src = src][@typ = createType(decl)];
+	
+TypeSymbol createType(loc decl){
+	if(decl.scheme == "java+class")
+		return class(decl,[]);
+	else if(decl.scheme == "java+interface")
+		return symbol(decl,[]);
+	assert "Unknown type <decl.scheme>";
 }
 
 Statement encloseInSynchronized(Declaration method:method(_,_,_,_,impl))
@@ -156,7 +172,7 @@ loc getNewMethodDeclaration(loc from, loc to, Declaration m:method(_,_,ps,_,_), 
 	}
 	else{
 		if(ps == []){
-			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + ","+ replaceAll(substring(from.path,1), "/", ".") +")";
+			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + replaceAll(substring(from.path,1), "/", ".") +")";
 		}
 		else{
 			newMethodDecl.path = substring(newMethodDecl.path,0,findLast(newMethodDecl.path,")")) + ","+ replaceAll(substring(from.path,1), "/", ".") +")";
@@ -171,31 +187,18 @@ default bool isFieldOf(Expression exp, c){
 	assert false : "What am I? <exp>";
 }
 
+bool isField(Expression f:simpleName(_)) = (f@decl.scheme == "java+field");
+bool isField(Expression q:qualifiedName(exp, _)) = isField(exp);
+default bool isField(Expression exp){
+	assert false : "What am I? <exp>";
+}
+
 loc getFirstAccessDecl(Expression f:simpleName(name)) 
 	= f@decl;
 loc getFirstAccessDecl(Expression q:qualifiedName(exp, _))
 	= getFirstAccessDecl(exp);
 Expression getInitFromVariable(Expression v:variable(_,_)) = Expression::null();
 Expression getInitFromVariable(Expression v:variable(_,_, init)) = init;
-
-Expression createQualifiedName(loc decl){
-	parts = split("/", decl.path);
-	parts = [p | p <- parts, p != ""];
-	parts = reverse(parts);
-	return createQualifiedName(parts, |java+class:///|);
-}
-
-Expression createQualifiedName(list[str] s:[x], loc scheme){
-	return simpleName(x)[@decl = (scheme + x)];
-}
-
-Expression createQualifiedName(list[str] s:[x,*xs], loc scheme){
-	path = x;
-	for(p <- xs){
-		path = p + "/" + path;
-	}
-	return qualifiedName(createQualifiedName(xs,|java+package:///|), simpleName(x)[@decl = scheme + path])[@decl = scheme + path];
-}
 
 bool isMethod(Declaration::method(_,_,_,_,_)) = true;
 bool isMethod(Declaration::method(_,_,_,_)) = true;
