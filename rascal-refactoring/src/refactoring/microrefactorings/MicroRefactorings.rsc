@@ -46,7 +46,7 @@ set[Declaration] desugarAccessToFields(set[Declaration] asts, loc methodDecl){
 		case m:method(r, n, ps, exs, impl):{
 			if(m@decl == methodDecl){
 				if(Modifier::static() in (m@modifiers ? [])){
-					impl = desugarQualifiedName(impl,|java+class:///| + getClassDeclFromMethod(m@decl));
+					impl = desugarQualifiedName(impl,getClassDeclFromMethod(m@decl));
 				}
 				else{
 					impl = desugarThis(impl);

@@ -48,10 +48,6 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 		}
 	}
 	refactoredAsts = visit(refactoredAsts){
-		case m:method(_,_,_,_,b):{
-			if(m@decl == |java+method:///sieve_of_eratosthenes/app/SieveApplication/main(java.lang.String%5B%5D)|)
-				iprintln(b);
-		}
 		case m:methodCall(_, _, _, _):{
 			if(m@decl == methodDecl)
 				insert adaptMethodCall(methodConfig, m);

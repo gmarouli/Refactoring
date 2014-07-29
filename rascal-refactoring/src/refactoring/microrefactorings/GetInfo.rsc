@@ -1,6 +1,7 @@
 module refactoring::microrefactorings::GetInfo
 
-import lang::sccfg::ast::DataFlowLanguage;
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
+import lang::java::m3::Core;
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 import String;
@@ -23,6 +24,10 @@ public set[loc] getSynchronizedMethods(Program p, rel[loc,loc] callGraph){
 		newSynchronizedMethods = synchronizedMethods + {decl | <decl, syncDecl> <- callGraph, (syncDecl in synchronizedMethods)};
 	}while(synchronizedMethods != newSynchronizedMethods);
 	return synchronizedMethods;
+}
+
+rel[loc,loc] getCallGraph(loc sourceProject){
+	return createM3FromDirectory(sourceProject)@methodInvocation;
 }
 
 rel[loc,loc] getCallGraph(set[Declaration] asts){

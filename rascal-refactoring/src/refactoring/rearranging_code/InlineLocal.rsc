@@ -20,7 +20,7 @@ import refactoring::rearranging_code::GenerateIds;
 
 data HelpingExp = helpingExp(Expression contExp, Expression brExp, Expression retExp, map[str, Expression] exs);
 
-set[Declaration] inlineLocal(set[Declaration] asts, loc local){
+set[Declaration] inlineLocal(set[Declaration] asts, loc local, loc sourceProject){
 	targetedMethodDecl = getMethodDeclFromVariable(local);
 	
 	//Collect synchronized methods
@@ -32,7 +32,8 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 	refactoredAsts = visit(asts){
 		case m:method(r, n, ps, exs, b):{
 			if(m@decl == targetedMethodDecl){
-				insert method(r, n, ps, exs, inlineLocal(b, local, {}, replacementIds, synchronizedMethods))[@src = m@src][@decl = m@decl][@typ = m@typ];
+				<b, replacementIds> = inlineLocal(b, local, {}, replacementIds, synchronizedMethods);
+				insert method(r, n, ps, exs, b)[@src = m@src][@decl = m@decl][@typ = m@typ];
 			}
 			else
 				fail;
@@ -52,9 +53,65 @@ set[Declaration] inlineLocal(set[Declaration] asts, loc local){
 }
 
 bool checkInlineLocal(Program p, Program pR, loc local, map[loc,loc] replacementIds){
-	generatedOriginalP = { generateOriginal(stmt, replacementIds) | stmt <- pR.statements};
-	iprintln(p.statements - generatedOriginalP);
-	return false;
+	differences = p.statements - pR.statements;
+	differencesR = pR.statements - p.statements;
+	mapIds = ();
+	for(s <- differences + differencesR )
+		mapIds[getIdFromStmt(s)] = mapIds[getIdFromStmt(s)] ? {} + {s};
+	iprintln(mapIds);
+	checked = {s,generateOriginal(s,replacementIds) | s <- differencesR, generateOriginal(s,replacementIds) in p.statements};
+	differences -= checked;
+	checked += {s,																	//assign
+				sRead,									//read local
+				sAssign,	//assign local
+				sR
+			|	s <- differences, getVarFromStmt(s) != local, bprintln(s),
+				sRead <- mapIds[getDependencyFromStmt(s)],									//assign
+				getVarFromStmt(sRead) == local, 								//read local
+				sAssign <- mapIds[getDependencyFromStmt(sRead)],
+				sR <- differencesR,
+				getIdFromStmt(sR) == getIdFromStmt(s),
+				getDependencyFromStmt(sAssign) == getOriginalId(replacementIds, getDependencyFromStmt(sR))	//read j?
+			};
+	//originalToNew = invert(replacementIds);
+	////find all reads of local
+	//for(r:read(_, local, d) <- differences){
+	//	//Get the assignments
+	//	for(dep <- mapIds[d]){ 
+	//		//get the replacement ids
+	//		set[loc] newIds = getRefactoredId(originalToNew, getDependencyFromStmt(dep));
+	//		//for every replacement id
+	//		for(id <- newIds){
+	//			for(targetDep <- mapIds[getDependencyFromStmt(dep)]){
+	//				println(checkForCycles(id, getDependencyFromStmt(targetDep), mapIds));
+	//			}
+	//		}	
+	//	}
+	//	iprintln(newIds);
+	//}
+	//iprintln(checked);
+	//
+	//iprintln(differences);
+	checked += findUnusedStmt(differences, p.statements,{});
+	iprintln((differences + differencesR) - checked);
+	println("Differences: <size((differences + differencesR) - checked)>");
+	return ((differences + differencesR) - checked) == {};
+}
+
+set[Stmt] findUnusedStmt(set[Stmt] differences, set[Stmt] stmts){
+	for(assign(id, local, dep) <- differences){
+		if(!(id in collectDeps(stmts)))
+			return {};
+		else{
+			
+		} 
+	}
+}
+bool checkForCycles(Stmt stmt, loc target, map[loc,set[Stmt]] mapIds){
+	set[Stmt] path = {};
+	while(id != target){
+		id = getDependenciesmapIds[id];
+	}
 }
 
 Stmt generateOriginal(Stmt s:read(id, var, dep), map[loc, loc] replacementIds)
@@ -84,14 +141,17 @@ Stmt generateOriginal(Stmt s:exitPoint(id, m), map[loc, loc] replacementIds)
 loc getOriginalId(map[loc,loc] replacementIds, loc id)
 	= replacementIds[id] ? id;
 
+set[loc] getRefactoredId(map[loc,set[loc]] replacementIds, loc id)
+	= replacementIds[id] ? {id};
+
 bool isAssign(Stmt e:assign(_,_,_))
 	= true;
 default bool isAssign(Stmt e)
 	= false;
 	
-Statement inlineLocal(Statement blockStmt, loc local, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
+tuple[Statement, map[loc,loc]] inlineLocal(Statement blockStmt, loc local, set[loc] replacementVariables, map[loc,loc] replacementIds, set[loc] synchronizedMethods){
 	loc targetBlock = findBlockContainingLocal(blockStmt, local);
-	return top-down-break visit(blockStmt){
+	blockStmt = top-down-break visit(blockStmt){
 		case s:block(stmts):{
 			if(s@src == targetBlock){
 				<s, exp, replacementVariables, replacementIds, _> = inlineLocalInStatement(s, local, Expression::null(), replacementVariables, replacementIds, synchronizedMethods);
@@ -103,6 +163,7 @@ Statement inlineLocal(Statement blockStmt, loc local, set[loc] replacementVariab
 				fail;
 		}
 	}
+	return <blockStmt, replacementIds>;
 }	
 
 ////assert(Expression expression)

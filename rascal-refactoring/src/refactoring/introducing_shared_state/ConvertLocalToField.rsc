@@ -4,14 +4,12 @@ import IO;
 import Set;
 import String;
 
-import PrettyPrint;
-
 import lang::java::jdt::m3::AST;
 import lang::java::m3::TypeSymbol;
 
-import lang::sccfg::ast::DataFlowLanguage;
-import lang::sccfg::converter::Java2SDFG;
-import lang::sccfg::converter::util::Getters;
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
+import lang::sdfg::converter::Java2SDFG;
+import lang::sdfg::converter::util::Getters;
 
 import refactoring::microrefactorings::GetInfo;
 import refactoring::rearranging_code::GenerateIds;
@@ -54,7 +52,7 @@ set[Declaration] convertLocalToField(set[Declaration] asts, loc local){
 Declaration convertLocalToField(Declaration f:field(t,frags), loc local, loc targetedMethodDecl, loc newFieldDecl, loc lockDecl){
 	for(fr <- frags){
 		if(fr@decl == newFieldDecl)
-			throw "Field with name <fieldName> already exists at <f@src>";
+			throw "Field with name <newFieldDecl> already exists at <f@src>";
 		if(fr@decl == lockDecl)
 			throw "Field with name generated_lock_for_<fieldName> already exists at <f@src>";
 	}
@@ -67,7 +65,6 @@ Declaration convertLocalToField(Declaration m:method(r, n, ps, exs, mb), loc loc
 		<mb, newFieldDeclaration> = encloseInASynchronizedBlock(mb, local, newFieldDecl, locking);
 		if(!(Stmt::block(_) := mb))
 			mb = block([mb])[@src = mb@src];
-		println("Returning method");
 		return method(r, n, ps, exs, mb)[@src = m@src][@decl = m@decl][@typ = m@typ][@modifiers = m@modifiers];
 	}
 	else
@@ -134,8 +131,8 @@ bool checkConvertLocalToField(Program original, Program refactored, loc local){
 }
 
 bool accessOf_AlwaysSynchronizedBy_(Program p, loc var, loc l){
-	accesses = { getIdFromStmt(stmt) | stmt <- p.statements, getVarFromStmt(stmt) == var};
-	guarded = { stmt | stmt <- p.statements, getVarFromStmt(stmt) == l, getDependencyFromStmt(stmt) in accesses, !isDataAccess(stmt)};
+	accesses = { getIdFromStmt(stmt) | stmt <- p.stmts, getVarFromStmt(stmt) == var};
+	guarded = { stmt | stmt <- p.stmts, getVarFromStmt(stmt) == l, getDependencyFromStmt(stmt) in accesses, !isDataAccess(stmt)};
 	return size(accesses) == size(guarded);
 }
 
@@ -152,7 +149,7 @@ set[Stmt] removeAllSynchronizationEdgesOfWithTheSameId(set[Stmt] stmts, loc var)
 }
 
 bool mapAccessesOfLocalToField(Program original, loc local, Program refactored, loc var){
-	accesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- original.statements, getVarFromStmt(stmt) == local};
-	newAccesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- refactored.statements, getVarFromStmt(stmt) == var};
+	accesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- original.stmts, getVarFromStmt(stmt) == local};
+	newAccesses = { <getIdFromStmt(stmt), getDependencyFromStmt(stmt)> | stmt <- refactored.stmts, getVarFromStmt(stmt) == var};
 	return accesses == newAccesses;
 }
