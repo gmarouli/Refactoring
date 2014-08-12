@@ -57,7 +57,8 @@ bool checkInlineLocal(Program p, Program pR, loc local, map[loc,loc] replacement
 	for(s <- differences + differencesR ){
 		mapIds[getIdFromStmt(s)] = (mapIds[getIdFromStmt(s)] ? {}) + {s};
 	}
-	set[Stmt] checked = {s,generateOriginal(s,replacementIds) | s <- differencesR, generateOriginal(s,replacementIds) in p.stmts, verifyDependency(s, inlinedBy)};
+	iprintln(differences);
+	set[Stmt] checked = {s,generateOriginal(s,replacementIds) | s <- differencesR, generateOriginal(s,replacementIds) in p.stmts, bprintln(s), verifyDependency(s, inlinedBy)};
 	differences -= checked;
 	checked += {s,			//assign
 				sRead,		//read local
@@ -66,9 +67,21 @@ bool checkInlineLocal(Program p, Program pR, loc local, map[loc,loc] replacement
 			|	s <- differences, getVarFromStmt(s) != local,
 				sRead <- mapIds[getDependencyFromStmt(s)] ? {},									//assign
 				getVarFromStmt(sRead) == local, 								//read local
-				sAssign <- mapIds[getDependencyFromStmt(sRead)],
+				sAssign <- mapIds[getDependencyFromStmt(sRead)]?{},
 				sR <- differencesR,
 				getIdFromStmt(sR) == getIdFromStmt(s),
+				getDependencyFromStmt(sAssign) == getOriginalId(replacementIds, getDependencyFromStmt(sR))	//read j?
+			};
+		checked += {s,			//assign
+				sRead,		//read local
+				sAssign,	//assign local
+				sR
+			|	s:call(id, rec, m, a) <- differences, 
+				sRead <- mapIds[rec] ? {},
+				getVarFromStmt(sRead) == local, 								//read local
+				sAssign <- mapIds[getDependencyFromStmt(sRead)],
+				sR <- differencesR,
+				getIdFromStmt(sR) == id,
 				getDependencyFromStmt(sAssign) == getOriginalId(replacementIds, getDependencyFromStmt(sR))	//read j?
 			};
 	checked += findUnusedStmt((differences + differencesR) - checked, p.stmts, local);
@@ -112,7 +125,19 @@ bool verifyDependency(Stmt s:read(id, var, dep), map[loc,set[loc]] inlinedBy){
 
 bool verifyDependency(Stmt s:assign(id, var, dep), map[loc,set[loc]] inlinedBy){
 	set[set[loc]] setOfInlined = range(inlinedBy);
-	isNewId = dep.length ? 1;
+	isNewId = getDependencyFromStmt(s).length ? 1;
+	if(isNewId > 0)
+		return true;
+	else{
+		for(ids <- setOfInlined)
+			if(id in ids && dep in ids)
+				return true;
+	}
+	return false;
+}
+bool verifyDependency(Stmt s:create(id, var, dep), map[loc,set[loc]] inlinedBy){
+	set[set[loc]] setOfInlined = range(inlinedBy);
+	isNewId = getDependencyFromStmt(s).length ? 1;
 	if(isNewId > 0)
 		return true;
 	else{
@@ -129,9 +154,11 @@ Stmt generateOriginal(Stmt s:read(id, var, dep), map[loc, loc] replacementIds)
 Stmt generateOriginal(Stmt s:assign(id, var, dep), map[loc, loc] replacementIds)
 	= assign(getOriginalId(replacementIds, id), var, getOriginalId(replacementIds, dep));
 
-Stmt generateOriginal(Stmt s:call(id, r, m, dep), map[loc, loc] replacementIds)
-	= call(getOriginalId(replacementIds, id), getOriginalId(replacementIds, r), m, getOriginalId(replacementIds, dep));
-
+Stmt generateOriginal(Stmt s:call(id, r, m, dep), map[loc, loc] replacementIds){
+	iprintln(s);
+	iprintln(call(getOriginalId(replacementIds, id), getOriginalId(replacementIds, r), m, getOriginalId(replacementIds, dep)));
+	return call(getOriginalId(replacementIds, id), getOriginalId(replacementIds, r), m, getOriginalId(replacementIds, dep));
+}
 Stmt generateOriginal(Stmt s:create(id, c, dep), map[loc, loc] replacementIds)
 	= create(getOriginalId(replacementIds, id), c, getOriginalId(replacementIds, dep));
 	
@@ -269,7 +296,7 @@ tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingE
 //for(list[Expression] initializers, Expression condition, list[Expression] updaters, Statement body)
 tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\for(init, cond, updaters, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
 	init = for(i <- init){
-		<temp, exp, replacementVariables, inlinedBy, replacementIds> = inlineLocal(i, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
+		<temp, exp, replacementVariables, replacementIds, inlinedBy> = inlineLocal(i, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 		if(!isLocalAssignment(i, local))
 			append(temp);
 	}
@@ -384,10 +411,10 @@ tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingE
 
 //\try(Statement body, list[Statement] catchClauses)
 tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\try(body, catchStatements), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods){
-	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
-	exitExtra = ();
+	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
+	HelpingExp exitExtra = helpingExp(Expression::null(),Expression::null(),Expression::null(),());
 	catchStatements = for(cs <- catchStatements){
-		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = gatherStmtFromCatchStatements(cs, exp, replacementVariables, replacementIds, synchronizedMethods, inlinedBy, getExceptionExp(extra));	
+		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = inlineLocalInCatchStatement(cs, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods, getExceptionExp(extra));	
 		exitExtra = updateExtra(exitExtra, extraC);
 		append(cs);
 	}
@@ -399,7 +426,7 @@ tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingE
 	<body, exp, replacementVariables, replacementIds, inlinedBy, extra> = inlineLocalInStatement(body, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods);
 	exitExtra = helpingExp(Expression::null(),Expression::null(),Expression::null(),());
 	catchStatements = for(cs <- catchStatements){
-		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = inlineLocalInStatement(cs, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods, getExceptionExp(extra));	
+		<cs, expC, replacementVariables, replacementIds, inlinedBy, extraC> = inlineLocalInCatchStatement(cs, local, exp, replacementVariables, replacementIds, inlinedBy, synchronizedMethods, getExceptionExp(extra));	
 		exitExtra = updateExtra(exitExtra, extraC);
 		append(cs);
 	}
@@ -418,7 +445,7 @@ tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingE
 }
 
 //\catch(Declaration exception, Statement body)
-tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInStatement(Statement s:\catch(except, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods, map[str, Expression] extra){
+tuple[Statement, Expression, set[loc], map[loc,loc], map[loc,set[loc]], HelpingExp] inlineLocalInCatchStatement(Statement s:\catch(except, body), loc local, Expression exp, set[loc] replacementVariables, map[loc,loc] replacementIds, map[loc,set[loc]] inlinedBy, set[loc] synchronizedMethods, map[str, Expression] extra){
 	HelpingExp newExtra = helpingExp(Expression::null(), Expression::null(), Expression::null(), ());
 	visit(except){
 		case e:simpleName(_) : {

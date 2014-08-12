@@ -1,11 +1,11 @@
 module refactoring::microrefactorings::MicroRefactorings
 
 import refactoring::microrefactorings::GetInfo;
-import lang::sccfg::ast::DataFlowLanguage;
+import lang::sdfg::ast::SynchronizedDataFlowGraphLanguage;
 import lang::java::jdt::m3::AST;
 import IO;
 import List;
-import lang::sccfg::converter::Java2SDFG;
+import lang::sdfg::converter::Java2SDFG;
 import lang::java::m3::TypeSymbol;
 import refactoring::rearranging_code::GenerateIds;
 

@@ -64,8 +64,8 @@ set[Declaration] moveMethod(set[Declaration] asts, loc methodDecl, loc destinati
 		} 
 	}
 	
-	p = createDFG(asts);
-	pR = createDFG(refactoredAsts);
+	p = createSDFG(asts);
+	pR = createSDFG(refactoredAsts);
 		
 	if(checkMoveMethod(p,pR, methodDecl, sourceClass@decl, destinationClassDecl, methodConfig)){
 		println("Refactoring Move Method successful!");
@@ -92,9 +92,9 @@ bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl,
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inParameters(loc decl, int index, loc origParam, loc newParam)){
 	differences = p.stmts - pR.stmts;
 	differencesR = pR.stmts - p.stmts;
-	sourceThis = sourceClassDecl;
+	sourceThis = |java+parameter:///|;
 	sourceThis.path = sourceClassDecl.path + "/this";
-	destinationThis = destinationClassDecl;
+	destinationThis = |java+parameter:///|;
 	destinationThis.path = destinationClassDecl.path + "/this";
 	map[loc,loc] swapped = (r1:dep1 | s1:call(id1, r1, methodDecl, dep1) <- differences, s2:call(id2, r2, decl, dep2) <- differencesR, id1 == id2, r1 == dep2, dep1 == r2);
 
@@ -112,15 +112,16 @@ bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl,
 			+ {s1, s2 | s1:acquireLock(id1, sourceThis, dep1) 	<- differences, s2:acquireLock(id2, newParam, dep2) 				<- (differencesR), id1 == id2, dep1 == dep2}
 			+ {s1, s2 | s1:acquireLock(id1, origParam, dep1) 	<- differences, s2:acquireLock(id2, destinationThis, dep2) 			<- (differencesR), id1 == id2, dep1 == dep2}
 			;
+		iprintln((differencesR + differences) - checked);
 	return ((differencesR + differences) - checked) == {};
 }
 
 bool checkMoveMethod(Program p, Program pR, loc methodDecl, loc sourceClassDecl, loc destinationClassDecl, MethodCase config:inFields(loc decl, Expression fieldExp, Declaration param)){
 	differences = p.stmts - pR.stmts;
 	differencesR = pR.stmts - p.stmts;
-	sourceThis = sourceClassDecl;
+	sourceThis = |java+parameter:///|;
 	sourceThis.path = sourceClassDecl.path + "/this";
-	destinationThis = destinationClassDecl;
+	destinationThis = |java+parameter:///|;
 	destinationThis.path = destinationClassDecl.path + "/this";
 	fieldDecl = fieldExp@decl;
 	map[loc,loc] swapped = (r1:dep1 | s1:call(id1, r1, methodDecl, dep1) <- differences, s2:call(id2, r2, decl, dep2) <- differencesR, id1 == id2, r1 == dep2, dep1 == r2);
