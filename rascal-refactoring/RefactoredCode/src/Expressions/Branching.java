@@ -1,42 +1,26 @@
 package Expressions;
 import java.io.IOException;
 public class Branching extends ExpressionGen {
-	int f;
-	ExpressionGen l;
 
-	public int add(Branching b, Branching c)  throws {
-		int i = 0;
-		int k = 0;
-		while(i == 3) {
-			if(k == 0) {
-				i = 5;
-				continue;
-			}
-			else if(k == 4) {
-				i = 6;
-				break;
-			}
-			else if(k == 9) {
-				i ++;
-			}
-			else {
-				return i ++;
-			}
-		}
-		return i;
-	}
-
-	public int sub()  throws {
+	void m(int l) {
+		;
 		try {
-			BooleanSieve b = new BooleanSieve(3);
-			b.mark(2);
-			add(null, null);
+			if(l > 0) {
+				throw new NullPointerException();
+			}
+			;
+			throw new IOException();
+		}
+		catch(NullPointerException e) {
+			System.out.println(0);
 		}
 		catch(IOException e) {
-			e.printStackTrace();
+			System.out.println(1);
 		}
-		BooleanSieve.print(new BooleanSieve(3));
-		return 0;
+		finally {
+			;
+			System.out.println(2);
+		}
 	}
 
 }
